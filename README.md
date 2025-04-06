@@ -12,6 +12,9 @@
 ## 개요
 (대충 프로젝트 내용 설명하는 글)
 ## 개발 언어
+|![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)|버전|
+|---|---|
+|![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)|버전|
 * Java
 * Python
 * DB(공사중)

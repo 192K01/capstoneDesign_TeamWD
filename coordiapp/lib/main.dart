@@ -1,6 +1,11 @@
-import 'dart:convert'; // JSON 데이터를 다루기 위해 필요
+// 📂 lib/main.dart
+
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; // HTTP 패키지
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';         // ▼▼▼ [수정] import 추가 ▼▼▼
+import 'package:permission_handler/permission_handler.dart'; // ▼▼▼ [수정] import 추가 ▼▼▼
+import 'camera.dart';
 
 void main() {
   runApp(const MyApp());
@@ -18,8 +23,9 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- 옷 사진 카드 하나를 위한 재사용 위젯 ---
+// (ClothingItem, RecommendationSection 위젯은 변경 없음)
 class ClothingItem extends StatelessWidget {
+// ... 기존 코드 ...
   const ClothingItem({super.key});
 
   @override
@@ -50,8 +56,8 @@ class ClothingItem extends StatelessWidget {
   }
 }
 
-// --- 제목 + 가로 스크롤 목록을 위한 재사용 위젯 ---
 class RecommendationSection extends StatelessWidget {
+// ... 기존 코드 ...
   final String title;
 
   const RecommendationSection({
@@ -88,8 +94,9 @@ class RecommendationSection extends StatelessWidget {
   }
 }
 
-// --- 날씨 & 일정 카드 위젯 (StatefulWidget) ---
+// (TodayInfoCard 위젯은 변경 없음)
 class TodayInfoCard extends StatefulWidget {
+// ... 기존 코드 ...
   const TodayInfoCard({super.key});
 
   @override
@@ -97,6 +104,7 @@ class TodayInfoCard extends StatefulWidget {
 }
 
 class _TodayInfoCardState extends State<TodayInfoCard> {
+// ... 기존 코드 ...
   String _weatherInfo = "날씨 로딩 중...";
 
   @override
@@ -143,6 +151,8 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
 
   @override
   Widget build(BuildContext context) {
+    // 2025년 9월 15일은 월요일입니다.
+    const todayString = '9. 15. 월';
     return Container(
       height: 160,
       padding: const EdgeInsets.all(16.0),
@@ -164,7 +174,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                     ),
                     child: const Center(
                         child: Text(
-                          '9. 13. 토',
+                          todayString,
                           style:
                           TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         )),
@@ -205,7 +215,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
   }
 }
 
-// --- [수정됨] 메인 화면 위젯을 StatefulWidget으로 변경 ---
+// --- 메인 화면 위젯 ---
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -214,24 +224,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // 팝업 메뉴의 표시 상태를 관리하는 변수
   bool _isMenuOpen = false;
-  int _selectedIndex = 0; // BottomNavigationBar의 현재 선택된 인덱스
+  int _selectedIndex = 0;
 
-  // 팝업 메뉴를 토글하는 함수
   void _toggleMenu() {
     setState(() {
       _isMenuOpen = !_isMenuOpen;
     });
   }
 
-  // BottomNavigationBar 아이템 탭 처리 함수
   void _onItemTapped(int index) {
-    // '추가' 버튼(인덱스 2)을 눌렀을 경우, 메뉴를 토글
     if (index == 2) {
       _toggleMenu();
     } else {
-      // 다른 버튼을 누르면, 해당 탭으로 이동하고 메뉴가 열려있다면 닫음
       setState(() {
         _selectedIndex = index;
         if (_isMenuOpen) {
@@ -241,41 +246,66 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // 팝업 메뉴 위젯을 빌드하는 함수
+  // ▼▼▼▼▼▼ [수정] 카메라 실행 및 화면 이동을 위한 함수 추가 ▼▼▼▼▼▼
+  Future<void> _addClothingItem() async {
+    // 팝업 메뉴를 먼저 닫아줍니다.
+    _toggleMenu();
+
+    // 카메라 권한을 확인하고, 없다면 요청합니다.
+    final cameraStatus = await Permission.camera.request();
+
+    if (cameraStatus.isGranted) {
+      // 권한이 있으면 카메라를 실행합니다.
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+
+      // 사진을 성공적으로 찍었다면, camera.dart의 AddClothingScreen으로 이동합니다.
+      if (image != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AddClothingScreen(imagePath: image.path),
+          ),
+        );
+      }
+    } else {
+      // 권한이 거부된 경우 사용자에게 안내합니다.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카메라 권한이 없어 기능을 실행할 수 없습니다.')),
+        );
+      }
+    }
+  }
+  // ▲▲▲▲▲▲ [수정] 함수 추가 끝 ▲▲▲▲▲▲
+
   Widget _buildPopupMenu() {
     return Stack(
       children: [
-        // 1. 검은색 반투명 배경 (쉐이딩 처리)
-        // 화면 전체를 덮고, 탭하면 메뉴가 닫히도록 GestureDetector 사용
         Positioned.fill(
           child: GestureDetector(
-            onTap: _toggleMenu, // 배경을 탭하면 메뉴 닫기
+            onTap: _toggleMenu,
             child: Container(
               color: Colors.black.withOpacity(0.7),
             ),
           ),
         ),
-        // 2. 팝업 버튼들
-        // 화면 하단 중앙에 위치
         Positioned(
-          bottom: 10, // BottomNavigationBar 위쪽으로 위치 조정
+          bottom: 10,
           left: 0,
           right: 0,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
               _buildMenuItem(
-                icon: Icons.checkroom, // T-shirt icon
+                icon: Icons.checkroom,
                 label: '옷 추가하기',
-                onTap: () {
-                  print('옷 추가하기 Tapped');
-                  _toggleMenu();
-                },
+                // ▼▼▼ [수정] onTap에 위에서 만든 함수를 연결합니다 ▼▼▼
+                onTap: _addClothingItem,
               ),
               const SizedBox(height: 16),
               _buildMenuItem(
-                icon: Icons.dry_cleaning, // Dress icon
+                icon: Icons.dry_cleaning,
                 label: '룩 추가하기',
                 onTap: () {
                   print('룩 추가하기 Tapped');
@@ -284,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
               _buildMenuItem(
-                icon: Icons.calendar_today, // Calendar icon
+                icon: Icons.calendar_today,
                 label: '일정 추가하기',
                 onTap: () {
                   print('일정 추가하기 Tapped');
@@ -292,14 +322,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               _buildcancelIcon(
-                icon:Icons.cancel_outlined,
-
-                onTap: () {
-                  print('팝업 나가기 Tapped');
-                  _toggleMenu();
-                },
+                icon: Icons.cancel_outlined,
+                onTap: _toggleMenu,
               ),
-
             ],
           ),
         ),
@@ -307,7 +332,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // (나머지 _buildcancelIcon, _buildMenuItem, build 메서드는 변경 없음)
   Widget _buildcancelIcon({
+// ... 기존 코드 ...
     required IconData icon,
     required VoidCallback onTap,
   }) {
@@ -324,8 +351,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  // 개별 팝업 메뉴 아이템을 만드는 헬퍼 함수
+
   Widget _buildMenuItem({
+// ... 기존 코드 ...
     required IconData icon,
     required String label,
     required VoidCallback onTap,
@@ -356,10 +384,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // [수정됨] Stack을 사용하여 기본 화면 위에 팝업 메뉴를 오버레이
+// ... 기존 코드 ...
     return Stack(
       children: [
-        // 1. 기본 화면 UI
         Scaffold(
           backgroundColor: Colors.white,
           appBar: AppBar(
@@ -398,27 +425,23 @@ class _HomeScreenState extends State<HomeScreen> {
             showUnselectedLabels: false,
             currentIndex: _selectedIndex,
             onTap: _onItemTapped,
-            items: [
-              const BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
-              const BottomNavigationBarItem(icon: Icon(Icons.search), label: '검색'),
-              // [수정됨] 메뉴 상태에 따라 아이콘 변경 (추가 <-> 닫기)
-              BottomNavigationBarItem(icon: Icon(Icons.add_circle_outline), label: '추가'),
-              const BottomNavigationBarItem(
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
+              BottomNavigationBarItem(icon: Icon(Icons.search), label: '검색'),
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.add_circle_outline), label: '추가'),
+              BottomNavigationBarItem(
                   icon: Icon(Icons.calendar_today_outlined), label: '캘린더'),
-              const BottomNavigationBarItem(
+              BottomNavigationBarItem(
                   icon: Icon(Icons.person_outline), label: '프로필'),
             ],
           ),
         ),
-        // 2. [추가됨] _isMenuOpen 상태가 true일 때만 팝업 메뉴를 보여줌
         IgnorePointer(
           ignoring: !_isMenuOpen,
           child: AnimatedOpacity(
-            // _isMenuOpen 상태에 따라 투명도를 조절
             opacity: _isMenuOpen ? 1.0 : 0.0,
-            // 애니메이션 지속 시간
             duration: const Duration(milliseconds: 300),
-            // 팝업 메뉴 위젯
             child: _buildPopupMenu(),
           ),
         ),
@@ -426,4 +449,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-// 테스트 이슈 처리

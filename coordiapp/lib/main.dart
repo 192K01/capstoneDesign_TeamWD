@@ -3,9 +3,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';         // ▼▼▼ [수정] import 추가 ▼▼▼
-import 'package:permission_handler/permission_handler.dart'; // ▼▼▼ [수정] import 추가 ▼▼▼
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'camera.dart';
+import 'dart:io' show Platform; // Platform 클래스를 사용하기 위해 import
 
 void main() {
   runApp(const MyApp());
@@ -23,9 +24,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// (ClothingItem, RecommendationSection 위젯은 변경 없음)
 class ClothingItem extends StatelessWidget {
-// ... 기존 코드 ...
   const ClothingItem({super.key});
 
   @override
@@ -57,7 +56,6 @@ class ClothingItem extends StatelessWidget {
 }
 
 class RecommendationSection extends StatelessWidget {
-// ... 기존 코드 ...
   final String title;
 
   const RecommendationSection({
@@ -94,9 +92,7 @@ class RecommendationSection extends StatelessWidget {
   }
 }
 
-// (TodayInfoCard 위젯은 변경 없음)
 class TodayInfoCard extends StatefulWidget {
-// ... 기존 코드 ...
   const TodayInfoCard({super.key});
 
   @override
@@ -104,7 +100,6 @@ class TodayInfoCard extends StatefulWidget {
 }
 
 class _TodayInfoCardState extends State<TodayInfoCard> {
-// ... 기존 코드 ...
   String _weatherInfo = "날씨 로딩 중...";
 
   @override
@@ -246,20 +241,51 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ▼▼▼▼▼▼ [수정] 카메라 실행 및 화면 이동을 위한 함수 추가 ▼▼▼▼▼▼
   Future<void> _addClothingItem() async {
-    // 팝업 메뉴를 먼저 닫아줍니다.
-    _toggleMenu();
+    _toggleMenu(); // 팝업 메뉴 먼저 닫기
 
-    // 카메라 권한을 확인하고, 없다면 요청합니다.
-    final cameraStatus = await Permission.camera.request();
+    final ImageSource? source = await showDialog<ImageSource>(
+      context: context,
+      builder: (BuildContext context) {
+        return SimpleDialog(
+          title: const Text('사진 가져오기'),
+          children: <Widget>[
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, ImageSource.camera);
+              },
+              child: const Text('카메라로 촬영'),
+            ),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, ImageSource.gallery);
+              },
+              child: const Text('갤러리에서 선택'),
+            ),
+          ],
+        );
+      },
+    );
 
-    if (cameraStatus.isGranted) {
-      // 권한이 있으면 카메라를 실행합니다.
+    if (source == null) {
+      return;
+    }
+
+    PermissionStatus status;
+    if (source == ImageSource.camera) {
+      status = await Permission.camera.request();
+    } else {
+      if (Platform.isIOS) {
+        status = await Permission.photos.request();
+      } else {
+        status = await Permission.storage.request();
+      }
+    }
+
+    if (status.isGranted) {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+      final XFile? image = await picker.pickImage(source: source);
 
-      // 사진을 성공적으로 찍었다면, camera.dart의 AddClothingScreen으로 이동합니다.
       if (image != null && mounted) {
         Navigator.push(
           context,
@@ -269,15 +295,13 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } else {
-      // 권한이 거부된 경우 사용자에게 안내합니다.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('카메라 권한이 없어 기능을 실행할 수 없습니다.')),
+          SnackBar(content: Text('${source == ImageSource.camera ? '카메라' : '갤러리'} 권한이 없어 기능을 실행할 수 없습니다.')),
         );
       }
     }
   }
-  // ▲▲▲▲▲▲ [수정] 함수 추가 끝 ▲▲▲▲▲▲
 
   Widget _buildPopupMenu() {
     return Stack(
@@ -300,7 +324,6 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildMenuItem(
                 icon: Icons.checkroom,
                 label: '옷 추가하기',
-                // ▼▼▼ [수정] onTap에 위에서 만든 함수를 연결합니다 ▼▼▼
                 onTap: _addClothingItem,
               ),
               const SizedBox(height: 16),
@@ -332,9 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // (나머지 _buildcancelIcon, _buildMenuItem, build 메서드는 변경 없음)
   Widget _buildcancelIcon({
-// ... 기존 코드 ...
     required IconData icon,
     required VoidCallback onTap,
   }) {
@@ -342,9 +363,9 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.only(top: 16.0),
       child: FloatingActionButton(
         onPressed: onTap,
-        backgroundColor: Colors.black, // 배경색을 검정으로 변경
-        foregroundColor: Colors.white, // 아이콘 색상을 흰색으로 변경
-        shape: const CircleBorder(),   // 모양을 원형으로 명시
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        shape: const CircleBorder(),
         elevation: 4.0,
         child: Icon(icon, size: 30),
 
@@ -353,7 +374,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMenuItem({
-// ... 기존 코드 ...
     required IconData icon,
     required String label,
     required VoidCallback onTap,
@@ -384,7 +404,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-// ... 기존 코드 ...
     return Stack(
       children: [
         Scaffold(

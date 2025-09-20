@@ -17,14 +17,13 @@
 |![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)|버전|
 * Java
 * Python
-* Dart
 * DB(공사중)
 ## 개발 환경
 ### 소프트웨어
-* Pycharm
-* Android Studio
-  * Flutter
-* Google Colab
+* IDE(공사중)
+* (대충 공사중)
+### 하드웨어
+* 컴퓨터 사양들
 ## 팀 컨벤션
 
 ## Copyright

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io'; // File 클래스를 사용하기 위해 import
+import 'package:path_provider/path_provider.dart'; // ▼▼▼ [수정] import 추가 ▼▼▼
 
 // 촬영한 사진과 정보를 입력하는 화면
 class AddClothingScreen extends StatefulWidget {
@@ -23,6 +24,28 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     _memoController.dispose();
     super.dispose();
   }
+
+  // ▼▼▼▼▼▼ [추가] 이미지 저장 함수 ▼▼▼▼▼▼
+  Future<String> _saveImage(String tempPath) async {
+    // 1. 앱의 문서(Document) 디렉토리 경로를 가져옵니다.
+    final directory = await getApplicationDocumentsDirectory();
+    final imageDirectory = Directory('${directory.path}/image');
+
+    // 2. '/image' 폴더가 없으면 새로 생성합니다.
+    if (!await imageDirectory.exists()) {
+      await imageDirectory.create(recursive: true);
+    }
+
+    // 3. 파일 이름과 경로를 설정합니다. (고유한 파일 이름을 위해 현재 시간 사용)
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final newPath = '${imageDirectory.path}/$fileName';
+
+    // 4. 임시 경로에 있는 파일을 새 경로로 복사합니다.
+    final File newImage = await File(tempPath).copy(newPath);
+
+    return newImage.path; // 저장된 새 파일의 경로를 반환합니다.
+  }
+  // ▲▲▲▲▲▲ [추가] 함수 끝 ▲▲▲▲▲▲
 
   @override
   Widget build(BuildContext context) {
@@ -82,24 +105,28 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              onPressed: () {
-                // 저장 버튼 로직
+              // ▼▼▼▼▼▼ [수정] onPressed 콜백 수정 ▼▼▼▼▼▼
+              onPressed: () async {
                 final String name = _nameController.text;
                 final String memo = _memoController.text;
 
-                // 간단히 콘솔에 출력 (실제 앱에서는 DB나 서버에 저장)
+                // 1. _saveImage 함수를 호출하여 사진을 영구 저장소에 저장
+                final String savedImagePath = await _saveImage(widget.imagePath);
+
+                // 2. 콘솔에 저장된 정보 출력
                 debugPrint('옷 이름: $name');
                 debugPrint('메모: $memo');
-                debugPrint('이미지 경로: ${widget.imagePath}');
+                debugPrint('영구 저장된 이미지 경로: $savedImagePath');
 
-                // 저장 후 홈 화면으로 돌아가기
-                Navigator.pop(context);
-
-                // 저장 완료 스낵바 표시
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('옷이 저장되었습니다!')),
-                );
+                // 3. 홈 화면으로 돌아가기
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('옷이 저장되었습니다!')),
+                  );
+                }
               },
+              // ▲▲▲▲▲▲ [수정] 콜백 수정 끝 ▲▲▲▲▲▲
               child: const Text('저장하기'),
             ),
           ],

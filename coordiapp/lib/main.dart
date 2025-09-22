@@ -241,6 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // main.dart 파일의 _addClothingItem 함수
   Future<void> _addClothingItem() async {
     _toggleMenu(); // 팝업 메뉴 먼저 닫기
 
@@ -275,14 +276,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (source == ImageSource.camera) {
       status = await Permission.camera.request();
     } else {
+      // Platform 클래스 사용을 위해 'dart:io'를 import 했는지 확인
       if (Platform.isIOS) {
         status = await Permission.photos.request();
       } else {
-        status = await Permission.storage.request();
+        status = await Permission.storage.request(); // 안드로이드는 storage 권한을 요청합니다.
       }
     }
 
     if (status.isGranted) {
+      // 권한이 있을 경우: 기존 로직
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: source);
 
@@ -294,7 +297,32 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }
+    } else if (status.isPermanentlyDenied) {
+      // 권한이 영구적으로 거부된 경우: 설정으로 이동
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('권한 설정 안내'),
+            content: const Text('앱 설정을 변경하여 갤러리 접근 권한을 허용해야 합니다.'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('취소'),
+              ),
+              TextButton(
+                onPressed: () {
+                  openAppSettings(); // 앱 설정 화면으로 이동
+                  Navigator.of(context).pop();
+                },
+                child: const Text('설정으로 이동'),
+              ),
+            ],
+          ),
+        );
+      }
     } else {
+      // 그 외의 경우 (예: 단순히 거부된 경우): 스낵바 표시
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${source == ImageSource.camera ? '카메라' : '갤러리'} 권한이 없어 기능을 실행할 수 없습니다.')),

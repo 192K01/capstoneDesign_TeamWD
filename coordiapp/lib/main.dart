@@ -1,12 +1,15 @@
+// 📂 lib/main.dart
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'dart:io' show Platform;
 
 import 'camera.dart';
-import 'calendar_screen.dart';
+import 'calendar_screen.dart'; // 이 파일이 없다면 제거해야 합니다.
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,11 +63,46 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _addClothingItem() async {
     if (_isMenuOpen) setState(() => _isMenuOpen = false);
     await Future.delayed(const Duration(milliseconds: 300));
+    
+    final ImageSource? source = await showDialog<ImageSource>(
+      context: context,
+      builder: (BuildContext context) {
+        return SimpleDialog(
+          title: const Text('사진 가져오기'),
+          children: <Widget>[
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, ImageSource.camera);
+              },
+              child: const Text('카메라로 촬영'),
+            ),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(context, ImageSource.gallery);
+              },
+              child: const Text('갤러리에서 선택'),
+            ),
+          ],
+        );
+      },
+    );
 
-    final cameraStatus = await Permission.camera.request();
-    if (cameraStatus.isGranted) {
+    if (source == null) return;
+
+    PermissionStatus status;
+    if (source == ImageSource.camera) {
+      status = await Permission.camera.request();
+    } else {
+      if (Platform.isIOS) {
+        status = await Permission.photos.request();
+      } else {
+        status = await Permission.storage.request();
+      }
+    }
+    
+    if (status.isGranted) {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+      final XFile? image = await picker.pickImage(source: source);
       if (image != null && mounted) {
         Navigator.push(context, MaterialPageRoute(
           builder: (context) => AddClothingScreen(imagePath: image.path),
@@ -73,7 +111,7 @@ class _MainScreenState extends State<MainScreen> {
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('카메라 권한이 없어 기능을 실행할 수 없습니다.')),
+          SnackBar(content: Text('${source == ImageSource.camera ? '카메라' : '갤러리'} 권한이 없어 기능을 실행할 수 없습니다.')),
         );
       }
     }
@@ -212,8 +250,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
   Future<void> _fetchWeather() async {
     try {
       const apiKey = 'aea983582fed66f091aad69100146ccd';
-      const lat = 37.1498
-      ;
+      const lat = 37.1498;
       const lon = 127.0772;
       final url = Uri.parse('https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$apiKey&units=metric&lang=kr');
       final response = await http.get(url);

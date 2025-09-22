@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -14,65 +15,73 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-
   String _weatherInfo = "로딩 중...";
   String _dateString = "";
+  List _scheduleData = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
-    _fetchWeather();
-    _setDateString();
+    _loadInitialData();
   }
 
-  void _setDateString() {
+  Future<void> _loadInitialData() async {
+    await Future.wait([_setDateString(), _fetchWeather(), _loadScheduleData()]);
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _setDateString() async {
     _dateString = DateFormat('M. d. E', 'ko_KR').format(DateTime.now());
   }
 
-  // lib/calendar_screen.dart 파일의 _CalendarScreenState 클래스 내부
+  Future<void> _loadScheduleData() async {
+    try {
+      final String jsonString = await rootBundle.loadString('repo/schedule_data.json');
+      final data = jsonDecode(jsonString);
+      if (mounted) setState(() => _scheduleData = data);
+    } catch (e) {
+      print("JSON 로딩 에러: $e");
+    }
+  }
 
   Future<void> _fetchWeather() async {
     try {
       const apiKey = 'aea983582fed66f091aad69100146ccd';
       const lat = 37.1498;
       const lon = 127.0772;
-
-      // ▼▼▼ 주소가 'https://' 로 시작하는지 확인하세요 ▼▼▼
-      final url = Uri.parse(
-          'https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$apiKey&units=metric&lang=kr');
-
+      final url = Uri.parse('https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$apiKey&units=metric&lang=kr');
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final description = data['weather'][0]['description'];
         final temp = data['main']['temp'];
-        final tempMax = data['main']['temp_max'];
         if (mounted) {
           setState(() {
-            _weatherInfo =
-            "$description, ${temp.toStringAsFixed(0)}°C/${tempMax.toStringAsFixed(0)}°C";
+            _weatherInfo = "$description, ${temp.toStringAsFixed(1)}°C";
           });
         }
       } else {
-        // API 키가 틀리거나 비활성화 상태일 때 이 부분이 실행될 수 있습니다.
-        print('!!! API 응답 에러: ${response.statusCode}');
-        if (mounted) {
-          setState(() {
-            _weatherInfo = "날씨 정보 없음";
-          });
-        }
+        if (mounted) setState(() => _weatherInfo = "날씨 정보 없음");
       }
     } catch (e) {
-      // 인터넷 권한이 없거나, http로 요청했을 때 이 부분이 실행됩니다.
-      print('!!! 날씨 API 에러 발생: $e');
-      if (mounted) {
-        setState(() {
-          _weatherInfo = "오류 발생";
-        });
-      }
+      if (mounted) setState(() => _weatherInfo = "오류 발생");
     }
+  }
+
+  void _showScheduleDetails(Map<String, dynamic> schedule) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return ScheduleDetailDialog(schedule: schedule);
+      },
+    );
   }
 
   @override
@@ -92,14 +101,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ],
         ),
       ),
-      body: ListView(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           _buildCalendar(),
           const SizedBox(height: 24),
           _buildScheduleHeader(),
           const SizedBox(height: 16),
-          _buildScheduleAndLooksCard(),
+          _buildCombinedScheduleCard(),
         ],
       ),
     );
@@ -115,6 +126,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         titleCentered: true,
         formatButtonVisible: false,
         titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black),
+        rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black),
       ),
       calendarStyle: const CalendarStyle(
         todayDecoration: BoxDecoration(color: Colors.grey, shape: BoxShape.circle),
@@ -140,12 +153,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildScheduleAndLooksCard() {
+  Widget _buildCombinedScheduleCard() {
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: Colors.grey[200],
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 2,
+            blurRadius: 5,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,12 +191,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ▼▼▼ 이 위젯이 수정되었습니다 ▼▼▼
   Widget _buildDateWeatherCard() {
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
-        color: Colors.grey[300],
+        color: Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -185,14 +205,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 1. Text 위젯을 Expanded로 감싸서 공간을 유연하게 사용하도록 합니다.
               Expanded(
                 child: Text(
                   _weatherInfo,
-                  textAlign: TextAlign.center, // 텍스트를 가운데 정렬
-                  overflow: TextOverflow.ellipsis, // 공간이 부족하면 ...으로 표시
-                  maxLines: 1, // 한 줄로 제한
-                  style: TextStyle(color: Colors.grey[800]),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: TextStyle(color: Colors.grey[800], fontSize: 12),
                 ),
               ),
               const SizedBox(width: 4),
@@ -207,18 +226,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _buildLooksCard() {
     return Column(
       children: [
-        const Row(
+        Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Looks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Icon(Icons.add, size: 20),
+            const Text('Looks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Icon(Icons.add, size: 20),
           ],
         ),
         const SizedBox(height: 8),
         Container(
-          height: 200,
+          height: 170,
           decoration: BoxDecoration(
-            color: Colors.grey[300],
+            color: Colors.grey[200],
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Center(
@@ -230,36 +249,130 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildScheduleList() {
-    return Column(
-      children: [
-        _buildScheduleItem(Colors.blue, '윤쓰코티 팝업', '3. 3.(월) 10:30 - ...'),
-        const SizedBox(height: 12),
-        _buildScheduleItem(Colors.green, '수강신청 정정기간', '3. 4.(화) - ...'),
-        const SizedBox(height: 12),
-        _buildScheduleItem(Colors.purple, '캡스톤 회의', '13:00 - 16:45'),
-        const SizedBox(height: 12),
-        _buildScheduleItem(Colors.orange, '미용실 예약', '18:00 - 19:00'),
-      ],
+    if (_scheduleData.isEmpty) {
+      return const Center(child: Text('일정이 없습니다.'));
+    }
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _scheduleData.length,
+      itemBuilder: (context, index) {
+        final schedule = _scheduleData[index];
+
+        return GestureDetector(
+          onTap: () => _showScheduleDetails(schedule),
+          child: _buildScheduleItem(
+            Colors.purple, // ▼▼▼ [수정] 색상 로직 삭제, 보라색으로 통일
+            schedule['title'].toString(),
+            schedule['startDate'].toString(),
+            schedule['location'].toString(),
+          ),
+        );
+      },
+      separatorBuilder: (context, index) => const SizedBox(height: 16),
     );
   }
 
-  Widget _buildScheduleItem(Color color, String title, String time) {
+  Widget _buildScheduleItem(Color color, String title, String date, String location) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(width: 4, height: 40, color: color),
-        const SizedBox(width: 8),
+        Container(width: 4, height: 50, color: color),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
-              Text(time, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(date, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+              const SizedBox(height: 4),
+              Text(location, style: const TextStyle(color: Colors.black54, fontSize: 12)),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+// 상세 일정 팝업 Dialog 위젯
+class ScheduleDetailDialog extends StatelessWidget {
+  final Map<String, dynamic> schedule;
+  const ScheduleDetailDialog({super.key, required this.schedule});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      child: Container(
+        padding: const EdgeInsets.all(20.0),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Icon(Icons.delete_outline),
+                  const Text('내 일정', style: TextStyle(fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              Row(
+                children: [
+                  Container(width: 5, height: 40, color: Colors.purple),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(schedule['title'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                        Text('${schedule['startDate']} - ${schedule['endDate']}', style: const TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.edit_outlined),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              _buildDetailSection(title: '알림설정', content: '시작시간 알림\n10분 전 알림'),
+              _buildDetailSection(title: '참가자', content: 'ava9797@hs.ac.kr\nkdhok2285@hs.ac.kr'),
+              _buildDetailSection(title: '위치', content: schedule['location']),
+              // ▼▼▼ [수정] TPO 섹션이 JSON의 'category' 필드와 연동됩니다 ▼▼▼
+              _buildDetailSection(title: 'TPO', content: schedule['category'].toString()),
+              _buildDetailSection(title: '날씨', content: '날씨 정보 불러오는 중...'),
+              _buildDetailSection(title: '설명', content: schedule['explanation']),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailSection({required String title, required String content}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Text(content),
+          const SizedBox(height: 8),
+          const Divider(),
+        ],
+      ),
     );
   }
 }

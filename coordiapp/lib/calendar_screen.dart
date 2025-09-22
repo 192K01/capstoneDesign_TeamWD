@@ -96,7 +96,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Icon(Icons.menu, color: Colors.black),
-            const Text('Calender', style: TextStyle(color: Color.fromARGB(255, 96, 21, 112), fontWeight: FontWeight.bold, fontSize: 22)),
+            // const Text('Calender', style: TextStyle(color: Color.fromARGB(255, 96, 21, 112), fontWeight: FontWeight.bold, fontSize: 22)), // Calender 글자 필요 없을 듯..
             const Icon(Icons.notifications_outlined, color: Colors.black),
           ],
         ),

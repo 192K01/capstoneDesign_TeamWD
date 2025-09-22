@@ -214,7 +214,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text('App Name', style: TextStyle(color: Colors.black, fontSize: 24, fontWeight: FontWeight.bold)),
+        title: const Text('coordiapp', style: TextStyle(color: Colors.black, fontSize: 24, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(icon: const Icon(Icons.notifications_outlined, color: Colors.black), onPressed: () {}),
         ],

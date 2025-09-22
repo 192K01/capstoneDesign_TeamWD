@@ -1,0 +1,130 @@
+[
+  {
+    "name_ko": "화이트",
+    "name_en": "white",
+    "hex": "#FFFFFF",
+    "r": 255,
+    "g": 255,
+    "b": 255
+  },
+  {
+    "name_ko": "화이트 계열",
+    "name_en": "white series",
+    "hex": "#F6F0DF",
+    "r": 246,
+    "g": 240,
+    "b": 223
+  },
+  {
+    "name_ko": "레드",
+    "name_en": "red",
+    "hex": "#EA3323",
+    "r": 234,
+    "g": 51,
+    "b": 35
+  },
+  {
+    "name_ko": "핑크",
+    "name_en": "pink",
+    "hex": "#F7CEFC",
+    "r": 247,
+    "g": 206,
+    "b": 252
+  },
+  {
+    "name_ko": "오렌지",
+    "name_en": "orange",
+    "hex": "#F5C342",
+    "r": 245,
+    "g": 195,
+    "b": 66
+  },
+  {
+    "name_ko": "옐로우",
+    "name_en": "yellow",
+    "hex": "#F3EE4F",
+    "r": 243,
+    "g": 238,
+    "b": 79
+  },
+  {
+    "name_ko": "그린",
+    "name_en": "green",
+    "hex": "#49A22E",
+    "r": 73,
+    "g": 162,
+    "b": 46
+  },
+  {
+    "name_ko": "블루",
+    "name_en": "blue",
+    "hex": "#4EADEA",
+    "r": 78,
+    "g": 173,
+    "b": 234
+  },
+  {
+    "name_ko": "네이비",
+    "name_en": "navy",
+    "hex": "#081F5C",
+    "r": 8,
+    "g": 31,
+    "b": 92
+  },
+  {
+    "name_ko": "블랙",
+    "name_en": "black",
+    "hex": "#000000",
+    "r": 0,
+    "g": 0,
+    "b": 0
+  },
+  {
+    "name_ko": "그레이",
+    "name_en": "gray",
+    "hex": "#A6A6A6",
+    "r": 166,
+    "g": 166,
+    "b": 166
+  },
+  {
+    "name_ko": "연청",
+    "name_en": "light blue",
+    "hex": "#80CAFA",
+    "r": 128,
+    "g": 202,
+    "b": 250
+  },
+  {
+    "name_ko": "진청",
+    "name_en": "dark blue",
+    "hex": "#2F6EA3",
+    "r": 47,
+    "g": 110,
+    "b": 163
+  },
+  {
+    "name_ko": "베이지",
+    "name_en": "beige",
+    "hex": "#EBDFBA",
+    "r": 235,
+    "g": 223,
+    "b": 186
+  },
+  {
+    "name_ko": "카키",
+    "name_en": "khaki",
+    "hex": "#204F11",
+    "r": 32,
+    "g": 79,
+    "b": 17
+  },
+  {
+    "name_ko": "와인",
+    "name_en": "wine",
+    "hex": "#941D12",
+    "r": 148,
+    "g": 29,
+    "b": 18
+  }
+]

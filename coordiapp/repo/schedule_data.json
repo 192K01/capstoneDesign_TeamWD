@@ -1,0 +1,35 @@
+[
+  {
+    "schedule_id": 101,
+    "user_id": 1,
+    "title": "캡스톤 디자인 회의",
+    "startDate": "2025-09-22",
+    "endDate": "2025-09-22",
+    "location": "한신대학교 6호관",
+    "explanation": "중간 발표 자료 준비 및 역할 분담 논의",
+    "category": "비즈니스 & 포멀 > 비즈니스 미팅",
+    "coordination_id": 201
+  },
+  {
+    "schedule_id": 102,
+    "user_id": 1,
+    "title": "친구와 저녁 약속",
+    "startDate": "2025-09-24",
+    "endDate": "2025-09-24",
+    "location": "전주시 객사",
+    "explanation": "오랜만에 만나는 친구와 저녁 식사",
+    "category": "일상 & 캐주얼 > 친구와의 약속",
+    "coordination_id": null
+  },
+  {
+    "schedule_id": 103,
+    "user_id": 2,
+    "title": "Flutter 온라인 스터디",
+    "startDate": "2025-09-25",
+    "endDate": "2025-09-25",
+    "location": "온라인 (Discord)",
+    "explanation": "Provider 상태 관리 및 파일 구조화에 대한 내용 공부",
+    "category": "일상 & 캐주얼 > 학교/캠퍼스 생활",
+    "coordination_id": null
+  }
+]

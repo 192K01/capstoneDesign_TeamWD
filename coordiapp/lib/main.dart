@@ -1,5 +1,3 @@
-// 📂 lib/main.dart
-
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -9,7 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'dart:io' show Platform;
 
 import 'camera.dart';
-import 'calendar_screen.dart'; // 이 파일이 없다면 제거해야 합니다.
+import 'calendar_screen.dart';
+import 'search_screen.dart'; // ▼▼▼ [수정] 폴더 경로 없이 바로 import ▼▼▼
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +28,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- 페이지 전환, 팝업 메뉴 등 앱의 전체 상태를 관리하는 위젯 ---
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -41,9 +39,10 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isMenuOpen = false;
 
+  // ▼▼▼ [수정] _pages 리스트에 SearchScreen 추가 ▼▼▼
   static const List<Widget> _pages = <Widget>[
     HomeScreen(),
-    Scaffold(body: Center(child: Text('Search Page'))),
+    SearchScreen(), // 검색 화면 위젯으로 교체
     CalendarScreen(),
     Scaffold(body: Center(child: Text('Profile Page'))),
   ];
@@ -60,10 +59,11 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // ... 이하 _addClothingItem, build, _buildPopupMenu 등 나머지 코드는 이전과 동일합니다 ...
   Future<void> _addClothingItem() async {
     if (_isMenuOpen) setState(() => _isMenuOpen = false);
     await Future.delayed(const Duration(milliseconds: 300));
-    
+
     final ImageSource? source = await showDialog<ImageSource>(
       context: context,
       builder: (BuildContext context) {
@@ -99,7 +99,7 @@ class _MainScreenState extends State<MainScreen> {
         status = await Permission.storage.request();
       }
     }
-    
+
     if (status.isGranted) {
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: source);
@@ -203,10 +203,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-// --- 홈 화면 UI 위젯 ---
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -233,8 +231,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-
-// --- 홈 화면에서 사용하는 재사용 위젯들 ---
 class TodayInfoCard extends StatefulWidget {
   const TodayInfoCard({super.key});
   @override

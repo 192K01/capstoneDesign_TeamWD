@@ -1,0 +1,32 @@
+[
+  {
+    "cloth_id": 1,
+    "user_id": 1,
+    "color": "그레이",
+    "category1": "상의",
+    "category2": "후드티",
+    "clothingImg": "assets/images/grey_hoodie.png",
+    "review": "편하고 따뜻해서 자주 입는 옷",
+    "season": "봄/가을"
+  },
+  {
+    "cloth_id": 2,
+    "user_id": 1,
+    "color": "진청",
+    "category1": "하의",
+    "category2": "청바지",
+    "clothingImg": "assets/images/dark_jeans.png",
+    "review": "어디에나 잘 어울리는 기본 청바지",
+    "season": "사계절"
+  },
+  {
+    "cloth_id": 3,
+    "user_id": 1,
+    "color": "블랙",
+    "category1": "신발",
+    "category2": "스니커즈",
+    "clothingImg": "assets/images/black_sneakers.png",
+    "review": "착화감이 좋음",
+    "season": "사계절"
+  }
+]

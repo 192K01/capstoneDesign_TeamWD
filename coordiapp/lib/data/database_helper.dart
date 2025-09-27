@@ -18,8 +18,9 @@ class DatabaseHelper {
     final path = join(documentsDirectory.path, 'fashion_app.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // ▼▼▼ 1. 데이터베이스 버전을 1에서 2로 올립니다. ▼▼▼
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade, // ▼▼▼ 2. 업그레이드 로직을 실행할 함수를 지정합니다. ▼▼▼
     );
   }
 
@@ -40,23 +41,37 @@ class DatabaseHelper {
       )
       ''');
 
-    // 2. clothes 테이블 생성
+    // 2. clothes 테이블 생성 (name, style, tpo 컬럼 추가)
     await db.execute('''
       CREATE TABLE clothes(
-          cloth_id INTEGER PRIMARY KEY,
+          cloth_id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id INTEGER,
+          name TEXT,
           color TEXT,
           category1 TEXT,
           category2 TEXT,
           clothingImg TEXT,
           review TEXT,
-          season TEXT
+          season TEXT,
+          style TEXT,
+          tpo TEXT
       )
     ''');
 
     // 3. 테이블 생성 후, 초기 데이터를 JSON 파일들에서 읽어와 삽입합니다.
     await _insertInitialData(db);
   }
+
+  // ▼▼▼ 3. 데이터베이스 버전이 올라갔을 때 실행될 업그레이드 함수입니다. ▼▼▼
+  // 기존 테이블을 삭제하고 onCreate를 다시 호출하여 테이블을 새로 만듭니다.
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute("DROP TABLE IF EXISTS clothes");
+      await db.execute("DROP TABLE IF EXISTS schedule");
+      await _onCreate(db, newVersion);
+    }
+  }
+
 
   // 초기 데이터를 JSON에서 읽어와 각 테이블에 삽입하는 함수
   Future<void> _insertInitialData(Database db) async {
@@ -91,19 +106,35 @@ class DatabaseHelper {
     return await db.query('schedule');
   }
 
-  // clothes 테이블을 검색하는 함수
-  Future<List<Map<String, dynamic>>> searchClothes(String query) async {
+  // 옷 이름 검색 및 필터링 함수
+  Future<List<Map<String, dynamic>>> searchClothes(String query, {List<String> styleFilters = const [], List<String> tpoFilters = const []}) async {
     Database db = await instance.database;
-    if (query.isEmpty) {
-      return await db.query('clothes'); // 검색어가 없으면 모든 옷 반환
+
+    // WHERE 절과 인자를 동적으로 구성
+    String whereClause = 'name LIKE ?';
+    List<dynamic> whereArgs = ['%$query%'];
+
+    if (styleFilters.isNotEmpty) {
+      // style 필터 추가
+      whereClause += ' AND style IN (${styleFilters.map((_) => '?').join(', ')})';
+      whereArgs.addAll(styleFilters);
     }
-    // category2(옷 이름), category1(종류), color 등에서 검색
+    if (tpoFilters.isNotEmpty) {
+      // tpo 필터 추가
+      whereClause += ' AND tpo IN (${tpoFilters.map((_) => '?').join(', ')})';
+      whereArgs.addAll(tpoFilters);
+    }
+
     return await db.query(
       'clothes',
-      where: 'category2 LIKE ? OR category1 LIKE ? OR color LIKE ?',
-      whereArgs: ['%$query%', '%$query%', '%$query%'],
+      where: whereClause,
+      whereArgs: whereArgs,
     );
   }
 
-// (나중에 추가할 기능들: 일정/옷 추가, 수정, 삭제 함수...)
+  // 옷 추가 함수
+  Future<int> addCloth(Map<String, dynamic> cloth) async {
+    Database db = await instance.database;
+    return await db.insert('clothes', cloth);
+  }
 }

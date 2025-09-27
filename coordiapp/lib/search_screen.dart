@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../data/database_helper.dart'; // lib/data 폴더의 database_helper.dart를 import
+import '../data/database_helper.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -18,7 +18,7 @@ class _SearchScreenState extends State<SearchScreen> {
   // 활성화된 필터 (UI용)
   final List<String> _activeFilters = [];
   final Map<String, List<String>> _filterOptions = {
-    '스타일': ['상의', '하의', '아우터', '신발'],
+    '스타일': ['캐주얼', '스트릿', '포멀', '비즈니스 캐주얼'],
     'TPO': ['일상 & 캐주얼', '비즈니스 & 포멀', '특별한 날 & 데이트', '활동적인 날'],
   };
 
@@ -26,7 +26,7 @@ class _SearchScreenState extends State<SearchScreen> {
   void initState() {
     super.initState();
     // 화면이 처음 열릴 때 모든 옷 데이터를 불러옴
-    _performSearch('');
+    _performSearch();
   }
 
   @override
@@ -35,14 +35,21 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  // 데이터베이스에 검색을 요청하는 함수
-  Future<void> _performSearch(String query) async {
+  // 데이터베이스에 검색 및 필터링을 요청하는 함수
+  Future<void> _performSearch() async {
     setState(() {
       _isLoading = true;
     });
 
     final dbHelper = DatabaseHelper.instance;
-    final results = await dbHelper.searchClothes(query);
+    final query = _searchController.text;
+
+    // 활성화된 필터를 '스타일'과 'TPO'로 구분
+    final styleFilters = _activeFilters.where((filter) => _filterOptions['스타일']!.contains(filter)).toList();
+    final tpoFilters = _activeFilters.where((filter) => _filterOptions['TPO']!.contains(filter)).toList();
+
+    // DB 헬퍼에 검색어와 필터 목록을 전달
+    final results = await dbHelper.searchClothes(query, styleFilters: styleFilters, tpoFilters: tpoFilters);
 
     setState(() {
       _searchResults = results;
@@ -66,13 +73,13 @@ class _SearchScreenState extends State<SearchScreen> {
           child: TextField(
             controller: _searchController,
             decoration: const InputDecoration(
-              hintText: '옷 이름, 종류, 색상 등 검색',
+              hintText: '옷 이름으로 검색', // 힌트 텍스트 변경
               prefixIcon: Icon(Icons.search, color: Colors.grey),
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(vertical: 10),
             ),
             // 텍스트가 변경될 때마다 검색 수행
-            onChanged: (value) => _performSearch(value),
+            onChanged: (value) => _performSearch(),
           ),
         ),
       ),
@@ -97,8 +104,6 @@ class _SearchScreenState extends State<SearchScreen> {
           _buildFilterPopupMenu('스타일', _filterOptions['스타일']!),
           const SizedBox(width: 8),
           _buildFilterPopupMenu('TPO', _filterOptions['TPO']!),
-          const SizedBox(width: 8),
-          IconButton(onPressed: () {}, icon: const Icon(Icons.filter_list)),
         ],
       ),
     );
@@ -111,7 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
           setState(() {
             _activeFilters.add(value);
           });
-          // 나중에 필터 로직을 여기에 추가할 수 있습니다.
+          _performSearch(); // 필터가 추가되면 검색을 다시 수행
         }
       },
       itemBuilder: (BuildContext context) {
@@ -153,6 +158,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   setState(() {
                     _activeFilters.remove(filter);
                   });
+                  _performSearch(); // 필터가 제거되면 검색을 다시 수행
                 },
                 backgroundColor: Colors.black,
                 labelStyle: const TextStyle(color: Colors.white),
@@ -166,6 +172,7 @@ class _SearchScreenState extends State<SearchScreen> {
               setState(() {
                 _activeFilters.clear();
               });
+              _performSearch(); // 필터를 초기화하면 검색을 다시 수행
             },
             child: const Text('초기화'),
           ),
@@ -199,15 +206,32 @@ class _SearchScreenState extends State<SearchScreen> {
           color: Colors.grey[200],
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           clipBehavior: Clip.antiAlias,
-          child: imagePath != null && imagePath.isNotEmpty
-              ? Image.asset(
-            imagePath,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return const Center(child: Icon(Icons.error_outline, color: Colors.white));
-            },
-          )
-              : const Center(child: Icon(Icons.checkroom, size: 60, color: Colors.white)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: imagePath != null && imagePath.isNotEmpty
+                    ? Image.asset(
+                  imagePath,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(child: Icon(Icons.error_outline, color: Colors.white));
+                  },
+                )
+                    : const Center(child: Icon(Icons.checkroom, size: 60, color: Colors.white)),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  cloth['name'] ?? '이름 없음',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

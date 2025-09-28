@@ -10,6 +10,7 @@ import 'dart:io' show Platform;
 
 import 'camera.dart';
 import 'calendar_screen.dart'; // 이 파일이 없다면 제거해야 합니다.
+import 'profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,7 +46,7 @@ class _MainScreenState extends State<MainScreen> {
     HomeScreen(),
     Scaffold(body: Center(child: Text('Search Page'))),
     CalendarScreen(),
-    Scaffold(body: Center(child: Text('Profile Page'))),
+    ProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -252,7 +253,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       const apiKey = 'aea983582fed66f091aad69100146ccd';
       const lat = 37.1498;
       const lon = 127.0772;
-      final url = Uri.parse('https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$apiKey&units=metric&lang=kr');
+        final url = Uri.parse('https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$apiKey&units=metric&lang=kr');
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

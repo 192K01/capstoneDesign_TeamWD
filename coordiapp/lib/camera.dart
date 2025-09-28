@@ -1,3 +1,5 @@
+// 📂 lib/camera.dart
+
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
@@ -5,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:image/image.dart' as img; // image 패키지 import
+import 'package:image/image.dart' as img;
 
 class AddClothingScreen extends StatefulWidget {
   final String imagePath;
@@ -75,8 +77,6 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
         final directory = await getApplicationDocumentsDirectory();
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_no_bg.png';
         final newPath = '${directory.path}/$fileName';
-
-        // ⬇️ 여기에 이 한 줄이 누락되었습니다 ⬇️
         final file = File(newPath);
         await file.writeAsBytes(bytes);
         return newPath;
@@ -100,13 +100,13 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
       for (int x = 0; x < image.width; x++) {
         final pixel = image.getPixel(x, y);
         if (pixel.a > 0) {
-          // ⬇️ .toRgba() 대신 .toUint32() 로 수정 ⬇️
           final color = Color.fromARGB(
               pixel.a.toInt(),
               pixel.r.toInt(),
               pixel.g.toInt(),
               pixel.b.toInt()
           ).value;
+
           colorCounts[color] = (colorCounts[color] ?? 0) + 1;
           if (colorCounts[color]! > maxCount) {
             maxCount = colorCounts[color]!;
@@ -118,7 +118,15 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     return Color(dominantColor);
   }
 
+  // 👇👇👇 이 함수가 수정되었습니다 👇👇👇
   String _findClosestColor(Color dominantColor, List<Map<String, dynamic>> colorStandard) {
+    // ✨✨✨ 추가된 임계값 로직 ✨✨✨
+    // R, G, B 값이 모두 50보다 작으면 충분히 어두운 색으로 간주하여 '블랙'으로 바로 반환합니다.
+    if (dominantColor.red < 50 && dominantColor.green < 50 && dominantColor.blue < 50) {
+      return "블랙";
+    }
+    // ✨✨✨ 여기까지 추가 ✨✨✨
+
     String closestColorName = '분석 불가';
     double minDistance = double.infinity;
 
@@ -225,9 +233,9 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 padding: const EdgeInsets.only(bottom: 16.0),
                 child: TextField(
                   readOnly: true,
+                  controller: TextEditingController(text: _analyzedColorName),
                   decoration: InputDecoration(
                     labelText: '분석된 색상',
-                    hintText: _analyzedColorName,
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Colors.grey[200],

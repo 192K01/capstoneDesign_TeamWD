@@ -1,0 +1,41 @@
+[
+  {
+    "cloth_id": 1,
+    "user_id": 1,
+    "name": "그레이 후드티",
+    "color": "그레이",
+    "category1": "상의",
+    "category2": "후드티",
+    "clothingImg": "assets/images/grey_hoodie.png",
+    "review": "편하고 따뜻해서 자주 입는 옷",
+    "season": "봄/가을",
+    "style": "캐주얼",
+    "tpo": "일상 & 캐주얼"
+  },
+  {
+    "cloth_id": 2,
+    "user_id": 1,
+    "name": "생로랑 다크 진",
+    "color": "진청",
+    "category1": "하의",
+    "category2": "청바지",
+    "clothingImg": "assets/images/dark_jeans.png",
+    "review": "어디에나 잘 어울리는 기본 청바지",
+    "season": "사계절",
+    "style": "캐주얼",
+    "tpo": "일상 & 캐주얼"
+  },
+  {
+    "cloth_id": 3,
+    "user_id": 1,
+    "name": "올블랙 스니커즈",
+    "color": "블랙",
+    "category1": "신발",
+    "category2": "스니커즈",
+    "clothingImg": "assets/images/black_sneakers.png",
+    "review": "착화감이 좋음",
+    "season": "사계절",
+    "style": "스트릿",
+    "tpo": "활동적인 날"
+  }
+]

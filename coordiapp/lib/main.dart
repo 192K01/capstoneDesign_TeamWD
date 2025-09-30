@@ -1,5 +1,3 @@
-// 📂 lib/main.dart
-
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -12,11 +10,15 @@ import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'camera.dart';
-import 'calendar_screen.dart';
 
 //로그인 관련
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
+
+import 'calendar_screen.dart'; // 이 파일이 없다면 제거해야 합니다.
+import 'profile_screen.dart';
+import 'search_screen.dart'; // ▼▼▼ [수정] 폴더 경로 없이 바로 import ▼▼▼
+
 
 void main() async {
   // main 함수 시작 전에 Flutter 엔진과 위젯 바인딩을 초기화합니다.
@@ -47,7 +49,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- 페이지 전환, 팝업 메뉴 등 앱의 전체 상태를 관리하는 위젯 ---
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -59,11 +60,12 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isMenuOpen = false;
 
+  // ▼▼▼ [수정] _pages 리스트에 SearchScreen 추가 ▼▼▼
   static const List<Widget> _pages = <Widget>[
     HomeScreen(),
-    Scaffold(body: Center(child: Text('Search Page'))),
+    SearchScreen(), // 검색 화면 위젯으로 교체
     CalendarScreen(),
-    Scaffold(body: Center(child: Text('Profile Page'))),
+    ProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -78,6 +80,7 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // ... 이하 _addClothingItem, build, _buildPopupMenu 등 나머지 코드는 이전과 동일합니다 ...
   Future<void> _addClothingItem() async {
     if (_isMenuOpen) setState(() => _isMenuOpen = false);
     await Future.delayed(const Duration(milliseconds: 300));
@@ -261,10 +264,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-// --- 홈 화면 UI 위젯 ---
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -303,7 +304,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// --- 홈 화면에서 사용하는 재사용 위젯들 ---
 class TodayInfoCard extends StatefulWidget {
   const TodayInfoCard({super.key});
   @override
@@ -363,6 +363,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
 
   Future<void> _fetchCurrentWeather(double lat, double lng) async {
     try {
+
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
       final now = DateTime.now();
       String baseDate;
@@ -377,6 +378,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst'
         '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
+
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

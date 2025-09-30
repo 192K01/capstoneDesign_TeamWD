@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'dart:convert';
+import '../data/database_helper.dart'; // 데이터베이스 헬퍼 import
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -17,8 +17,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _selectedDay;
   String _weatherInfo = "로딩 중...";
   String _dateString = "";
-  List _scheduleData = [];
+  List<Map<String, dynamic>> _scheduleData = []; // 타입을 명확히 지정
   bool _isLoading = true;
+
+  final dbHelper = DatabaseHelper.instance;
 
   @override
   void initState() {
@@ -28,7 +30,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadInitialData() async {
-    await Future.wait([_setDateString(), _fetchWeather(), _loadScheduleData()]);
+    // DB 로딩, 날짜 설정, 날씨 로딩을 동시에 진행
+    await Future.wait([
+      _loadSchedulesFromDb(),
+      _setDateString(),
+      _fetchWeather(),
+    ]);
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -36,18 +43,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  Future<void> _setDateString() async {
-    _dateString = DateFormat('M. d. E', 'ko_KR').format(DateTime.now());
+  // DB에서 스케줄 데이터를 불러오는 함수
+  Future<void> _loadSchedulesFromDb() async {
+    final data = await dbHelper.getSchedules();
+    if (mounted) {
+      setState(() {
+        _scheduleData = data;
+      });
+    }
   }
 
-  Future<void> _loadScheduleData() async {
-    try {
-      final String jsonString = await rootBundle.loadString('repo/schedule_data.json');
-      final data = jsonDecode(jsonString);
-      if (mounted) setState(() => _scheduleData = data);
-    } catch (e) {
-      print("JSON 로딩 에러: $e");
-    }
+  Future<void> _setDateString() async {
+    _dateString = DateFormat('M. d. E', 'ko_KR').format(DateTime.now());
   }
 
   Future<void> _fetchWeather() async {
@@ -96,7 +103,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Icon(Icons.menu, color: Colors.black),
-            // const Text('Calender', style: TextStyle(color: Color.fromARGB(255, 96, 21, 112), fontWeight: FontWeight.bold, fontSize: 22)), // Calender 글자 필요 없을 듯..
+            const Text('Calender', style: TextStyle(color: Color.fromARGB(255, 96, 21, 112), fontWeight: FontWeight.bold, fontSize: 22)),
             const Icon(Icons.notifications_outlined, color: Colors.black),
           ],
         ),
@@ -250,7 +257,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildScheduleList() {
     if (_scheduleData.isEmpty) {
-      return const Center(child: Text('일정이 없습니다.'));
+      return const SizedBox(
+          height: 100, // 일정이 없을 때도 최소 높이를 주어 UI가 깨지지 않게 함
+          child: Center(child: Text('일정이 없습니다.'))
+      );
     }
 
     return ListView.separated(
@@ -259,11 +269,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       itemCount: _scheduleData.length,
       itemBuilder: (context, index) {
         final schedule = _scheduleData[index];
+        Color itemColor = Colors.purple; // 기본 색상
 
         return GestureDetector(
           onTap: () => _showScheduleDetails(schedule),
           child: _buildScheduleItem(
-            Colors.purple, // ▼▼▼ [수정] 색상 로직 삭제, 보라색으로 통일
+            itemColor,
             schedule['title'].toString(),
             schedule['startDate'].toString(),
             schedule['location'].toString(),
@@ -349,7 +360,6 @@ class ScheduleDetailDialog extends StatelessWidget {
               _buildDetailSection(title: '알림설정', content: '시작시간 알림\n10분 전 알림'),
               _buildDetailSection(title: '참가자', content: 'ava9797@hs.ac.kr\nkdhok2285@hs.ac.kr'),
               _buildDetailSection(title: '위치', content: schedule['location']),
-              // ▼▼▼ [수정] TPO 섹션이 JSON의 'category' 필드와 연동됩니다 ▼▼▼
               _buildDetailSection(title: 'TPO', content: schedule['category'].toString()),
               _buildDetailSection(title: '날씨', content: '날씨 정보 불러오는 중...'),
               _buildDetailSection(title: '설명', content: schedule['explanation']),

@@ -7,7 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:image/image.dart' as img;
+
+import 'package:image/image.dart' as img; // image 패키지 import
+import 'data/database_helper.dart'; // DatabaseHelper import
+
 
 class AddClothingScreen extends StatefulWidget {
   final String imagePath;
@@ -28,6 +31,10 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
   String? _analyzedColorName;
   List<Map<String, dynamic>> _colorStandard = [];
 
+  String? _analyzedSubCategory;
+  String? _analyzedArticleType;
+
+
   @override
   void initState() {
     super.initState();
@@ -40,23 +47,62 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     final newPath = await _removeBackground(widget.imagePath);
     if (mounted) setState(() => _processedImagePath = newPath);
 
+    final imagePathForAnalysis = newPath ?? widget.imagePath;
+
+    // 색상 분석
     if (newPath != null) {
       if (mounted) setState(() => _processingStatusText = '색상 분석 중...');
-      final dominantColor = await _findDominantColor(newPath);
-
+      final dominantColor = await _findDominantColor(imagePathForAnalysis);
       if (dominantColor != null) {
         final closestColorName = _findClosestColor(dominantColor, _colorStandard);
         if (mounted) setState(() => _analyzedColorName = closestColorName);
       }
-    } else {
+
+    }
+
+    // 옷 종류 분석 함수 호출
+    if (mounted) setState(() => _processingStatusText = '옷 종류 분석 중...');
+    await _analyzeClothType(imagePathForAnalysis);
+
+    if (mounted) setState(() => _isProcessingImage = false);
+
+    else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('배경 제거에 실패했습니다. 원본 이미지로 진행합니다.')),
         );
       }
     }
+  }
 
-    if (mounted) setState(() => _isProcessingImage = false);
+  Future<void> _analyzeClothType(String imagePath) async {
+    try {
+      // !!! 중요 !!! 실제 서버 IP 주소로 변경.
+      const String serverIp = '3.36.66.130';
+      final uri = Uri.parse('http://$serverIp:5000/predict');
+
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(await http.MultipartFile.fromPath('image', imagePath));
+
+      final response = await request.send();
+
+      if (response.statusCode == 200) {
+        final responseBody = await response.stream.bytesToString();
+        final data = jsonDecode(responseBody);
+
+        if (mounted) {
+          setState(() {
+            _analyzedSubCategory = data['subCategory'];
+            _analyzedArticleType = data['articleType'];
+          });
+        }
+      } else {
+        if (mounted) setState(() => _analyzedArticleType = '분석 실패 (서버 오류)');
+      }
+    } catch (e) {
+      debugPrint('옷 종류 분석 중 예외 발생: $e');
+      if (mounted) setState(() => _analyzedArticleType = '분석 실패 (연결 오류)');
+    }
   }
 
   Future<void> _loadColorData() async {
@@ -77,6 +123,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
         final directory = await getApplicationDocumentsDirectory();
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_no_bg.png';
         final newPath = '${directory.path}/$fileName';
+
         final file = File(newPath);
         await file.writeAsBytes(bytes);
         return newPath;
@@ -160,6 +207,24 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     final String name = _nameController.text;
     final String memo = _memoController.text;
 
+    // 데이터베이스에 저장할 옷 정보 Map 생성
+    final newCloth = {
+      'user_id': 1, // 예시 사용자 ID
+      'name': name,
+      'color': _analyzedColorName,
+      'category1': '상의', // TODO: 추후 AI 분석 결과 또는 사용자 입력으로 대체
+      'category2': '기타', // TODO: 추후 AI 분석 결과 또는 사용자 입력으로 대체
+      'clothingImg': imagePathToSave,
+      'review': memo,
+      'season': '사계절', // TODO: 추후 사용자 입력으로 대체
+      'style': '캐주얼',   // TODO: 추후 사용자 입력으로 대체
+      'tpo': '일상 & 캐주얼' // TODO: 추후 사용자 입력으로 대체
+    };
+
+    // 데이터베이스에 옷 추가
+    final dbHelper = DatabaseHelper.instance;
+    await dbHelper.addCloth(newCloth);
+
     debugPrint('--- 저장된 옷 정보 ---');
     debugPrint('옷 이름: $name');
     debugPrint('메모: $memo');
@@ -228,6 +293,37 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
               ],
             ),
             const SizedBox(height: 24),
+
+            if (_analyzedSubCategory != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                child: TextField(
+                  readOnly: true,
+                  controller: TextEditingController(text: _analyzedSubCategory),
+                  decoration: InputDecoration(
+                    labelText: '분석된 중분류',
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.grey[200],
+                  ),
+                ),
+              ),
+
+            if (_analyzedArticleType != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16.0),
+                child: TextField(
+                  readOnly: true,
+                  controller: TextEditingController(text: _analyzedArticleType),
+                  decoration: InputDecoration(
+                    labelText: '분석된 상세 품목',
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.grey[200],
+                  ),
+                ),
+              ),
+
             if (_analyzedColorName != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16.0),

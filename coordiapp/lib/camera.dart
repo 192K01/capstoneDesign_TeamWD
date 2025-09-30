@@ -7,7 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:image/image.dart' as img;
+
+import 'package:image/image.dart' as img; // image 패키지 import
+import 'data/database_helper.dart'; // DatabaseHelper import
+
 
 class AddClothingScreen extends StatefulWidget {
   final String imagePath;
@@ -77,6 +80,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
         final directory = await getApplicationDocumentsDirectory();
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_no_bg.png';
         final newPath = '${directory.path}/$fileName';
+
         final file = File(newPath);
         await file.writeAsBytes(bytes);
         return newPath;
@@ -159,6 +163,24 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     final imagePathToSave = _processedImagePath ?? widget.imagePath;
     final String name = _nameController.text;
     final String memo = _memoController.text;
+
+    // 데이터베이스에 저장할 옷 정보 Map 생성
+    final newCloth = {
+      'user_id': 1, // 예시 사용자 ID
+      'name': name,
+      'color': _analyzedColorName,
+      'category1': '상의', // TODO: 추후 AI 분석 결과 또는 사용자 입력으로 대체
+      'category2': '기타', // TODO: 추후 AI 분석 결과 또는 사용자 입력으로 대체
+      'clothingImg': imagePathToSave,
+      'review': memo,
+      'season': '사계절', // TODO: 추후 사용자 입력으로 대체
+      'style': '캐주얼',   // TODO: 추후 사용자 입력으로 대체
+      'tpo': '일상 & 캐주얼' // TODO: 추후 사용자 입력으로 대체
+    };
+
+    // 데이터베이스에 옷 추가
+    final dbHelper = DatabaseHelper.instance;
+    await dbHelper.addCloth(newCloth);
 
     debugPrint('--- 저장된 옷 정보 ---');
     debugPrint('옷 이름: $name');

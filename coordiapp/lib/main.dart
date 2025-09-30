@@ -11,6 +11,7 @@ import 'dart:io' show Platform;
 import 'camera.dart';
 import 'calendar_screen.dart'; // 이 파일이 없다면 제거해야 합니다.
 import 'profile_screen.dart';
+import 'schedule_add.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -166,7 +167,13 @@ class _MainScreenState extends State<MainScreen> {
               const SizedBox(height: 16),
               _buildMenuItem(icon: Icons.dry_cleaning, label: '룩 추가하기', onTap: () {}),
               const SizedBox(height: 16),
-              _buildMenuItem(icon: Icons.calendar_today, label: '일정 추가하기', onTap: () {}),
+              _buildMenuItem(icon: Icons.calendar_today, label: '일정 추가하기', onTap: () {
+                // 메뉴를 닫고 새 화면으로 이동합니다.
+                if (_isMenuOpen) setState(() => _isMenuOpen = false);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (context) => const ScheduleAddScreen(),
+                ));
+              }),
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
                 child: FloatingActionButton(

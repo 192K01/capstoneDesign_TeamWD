@@ -20,8 +20,6 @@ import 'profile_screen.dart';
 import 'schedule_add.dart';
 import 'search_screen.dart'; // ▼▼▼ [수정] 폴더 경로 없이 바로 import ▼▼▼
 
-
-
 void main() async {
   // main 함수 시작 전에 Flutter 엔진과 위젯 바인딩을 초기화합니다.
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,7 +44,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // 로그인 상태에 따라 첫 화면을 결정합니다.
       // isLoggedIn이 true이면 MainScreen을, false이면 LoginScreen을 보여줍니다.
-      home: const LoginScreen(),
+      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
     );
   }
 }
@@ -215,13 +213,20 @@ class _MainScreenState extends State<MainScreen> {
               ),
               const SizedBox(height: 16),
 
-              _buildMenuItem(icon: Icons.calendar_today, label: '일정 추가하기', onTap: () {
-                // 메뉴를 닫고 새 화면으로 이동합니다.
-                if (_isMenuOpen) setState(() => _isMenuOpen = false);
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (context) => const ScheduleAddScreen(),
-                ));
-              }),
+              _buildMenuItem(
+                icon: Icons.calendar_today,
+                label: '일정 추가하기',
+                onTap: () {
+                  // 메뉴를 닫고 새 화면으로 이동합니다.
+                  if (_isMenuOpen) setState(() => _isMenuOpen = false);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ScheduleAddScreen(),
+                    ),
+                  );
+                },
+              ),
 
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
@@ -369,7 +374,6 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
 
   Future<void> _fetchCurrentWeather(double lat, double lng) async {
     try {
-
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
       final now = DateTime.now();
       String baseDate;

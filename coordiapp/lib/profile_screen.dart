@@ -1,6 +1,5 @@
-// 📂 lib/profile_screen.dart
-
 import 'package:flutter/material.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,13 +15,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int cloth_num = 0;
   int saved_look = 0;
 
-  final List<dynamic> _filterItems = [
-    Icons.favorite,
-    '전체',
-    '상의',
-    '하의',
-    '신발',
-  ];
+  final List<dynamic> _filterItems = [Icons.favorite, '전체', '상의', '하의', '신발'];
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +31,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.menu, color: Colors.black),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
           ),
         ],
       ),
@@ -94,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // icon 속성 추가
                   icon: const Icon(
                     Icons.edit, // 연필 모양 아이콘
-                    size: 15,     // 아이콘 크기
+                    size: 15, // 아이콘 크기
                     color: Colors.black,
                   ),
                   // 기존 child를 label 속성으로 변경
@@ -149,7 +147,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // 탭 아이템을 만드는 함수 (새로 추가)
-  Widget _buildTabItem({required IconData icon, required bool isSelected, required VoidCallback onTap}) {
+  Widget _buildTabItem({
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -178,7 +180,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-
   Widget _buildFilterBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
@@ -195,30 +196,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     bool isSelected = _selectedFilterIndex == index;
                     bool isIcon = item is IconData;
 
-                    final buttonPadding = const EdgeInsets.symmetric(horizontal: 12);
+                    final buttonPadding = const EdgeInsets.symmetric(
+                      horizontal: 12,
+                    );
                     final buttonMinSize = const Size(0, 36);
 
                     final ButtonStyle selectedStyle = ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black, foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: buttonPadding, minimumSize: buttonMinSize,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap);
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: buttonPadding,
+                      minimumSize: buttonMinSize,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    );
 
-                    final ButtonStyle unselectedStyle = OutlinedButton.styleFrom(
-                        foregroundColor: Colors.black, side: const BorderSide(color: Colors.grey),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: buttonPadding, minimumSize: buttonMinSize,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap);
+                    final ButtonStyle unselectedStyle =
+                        OutlinedButton.styleFrom(
+                          foregroundColor: Colors.black,
+                          side: const BorderSide(color: Colors.grey),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: buttonPadding,
+                          minimumSize: buttonMinSize,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        );
 
                     Widget button;
                     if (isSelected) {
-                      button = ElevatedButton(onPressed: () {}, style: selectedStyle,
-                          child: isIcon ? Icon(item, size: 20) : Text(item as String));
+                      button = ElevatedButton(
+                        onPressed: () {},
+                        style: selectedStyle,
+                        child: isIcon
+                            ? Icon(item, size: 20)
+                            : Text(item as String),
+                      );
                     } else {
-                      button = OutlinedButton(onPressed: () => setState(() => _selectedFilterIndex = index),
-                          style: unselectedStyle, child: isIcon ? Icon(item, size: 20) : Text(item as String));
+                      button = OutlinedButton(
+                        onPressed: () =>
+                            setState(() => _selectedFilterIndex = index),
+                        style: unselectedStyle,
+                        child: isIcon
+                            ? Icon(item, size: 20)
+                            : Text(item as String),
+                      );
                     }
-                    return Padding(padding: const EdgeInsets.only(right: 8.0), child: button);
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: button,
+                    );
                   }),
                 ),
               ),
@@ -226,9 +254,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             OutlinedButton(
               onPressed: () {},
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.black, side: const BorderSide(color: Colors.grey),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                padding: EdgeInsets.zero, minimumSize: const Size(36, 36),
+                foregroundColor: Colors.black,
+                side: const BorderSide(color: Colors.grey),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(36, 36),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               child: const Icon(Icons.swap_vert, size: 20),
@@ -245,7 +277,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
         child: GridView.builder(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3, crossAxisSpacing: 8, mainAxisSpacing: 8,
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
             childAspectRatio: 1 / 1.2,
           ),
           itemCount: 15,
@@ -268,8 +302,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildBookmarkScreen() {
     return const Expanded(
       child: Center(
-        child: Text('Bookmark Screen',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        child: Text(
+          'Bookmark Screen',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }

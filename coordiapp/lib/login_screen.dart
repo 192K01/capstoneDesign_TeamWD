@@ -1,8 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart'; // MainScreen으로 이동하기 위해 import
-
-//회원가입 관련
 import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,20 +16,88 @@ class _LoginScreenState extends State<LoginScreen> {
   // 이메일과 비밀번호 입력을 관리하기 위한 컨트롤러
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false; // 로딩 상태를 위한 변수
 
-  // 로그인 성공 시 홈 화면으로 이동하는 함수
-  Future<void> _loginAndNavigate() async {
-    // 실제 앱에서는 여기서 이메일과 비밀번호가 맞는지 서버와 통신해야 합니다.
-    // 지금은 로그인 버튼을 누르면 무조건 성공하는 것으로 가정합니다.
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true);
-
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const MainScreen()),
-      );
+  // ▼▼▼ 서버와 통신하여 로그인을 처리하는 함수 ▼▼▼
+  Future<void> _handleLogin() async {
+    // 이메일 또는 비밀번호가 비어있는지 확인
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이메일과 비밀번호를 모두 입력해주세요.')));
+      return;
     }
+
+    setState(() => _isLoading = true); // 로딩 시작
+
+    try {
+      // EC2 서버의 IP 주소와 로그인 엔드포인트
+      const serverIp = '3.36.66.130';
+      final url = Uri.parse('http://$serverIp:5000/login');
+
+      // 서버로 보낼 데이터를 Map 형태로 구성
+      final Map<String, String> loginData = {
+        'email': _emailController.text,
+        'password': _passwordController.text,
+      };
+
+      // HTTP POST 요청 보내기
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(loginData),
+      );
+
+      if (mounted) {
+        // 서버로부터 받은 응답을 JSON으로 파싱
+        final responseData = jsonDecode(response.body);
+
+        if (response.statusCode == 200) {
+          final message = responseData['message'];
+          final userName = responseData['userName'];
+          // 로그인 성공 시
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('isLoggedIn', true); // 로그인 상태 저장
+          await prefs.setString('userEmail', _emailController.text);
+          await prefs.setString('userName', userName);
+
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+          // MainScreen으로 이동하고 이전 화면(로그인 화면)은 스택에서 제거
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const MainScreen()),
+          );
+        } else {
+          final message = responseData['message'];
+          // 로그인 실패 시 (예: 아이디 없음, 비밀번호 틀림 등)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      // 네트워크 오류 등 예외 발생 시
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('로그인 중 오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false); // 로딩 종료
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -46,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               // 1. 로고 (임시 텍스트)
               const Text(
-                'CodiApp',
+                'coordiapp', // 어플 이름
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 48,
@@ -85,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // 4. 로그인 버튼
               ElevatedButton(
-                onPressed: _loginAndNavigate,
+                onPressed: _isLoading ? null : _handleLogin, // 로딩 중에는 버튼 비활성화
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black, // 버튼 색상
                   foregroundColor: Colors.white, // 글자 색상
@@ -94,7 +162,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(12.0),
                   ),
                 ),
-                child: const Text('로그인', style: TextStyle(fontSize: 16)),
+                child: _isLoading
+                    ? const SizedBox(
+                        // 로딩 중일 때 인디케이터 표시
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 3,
+                        ),
+                      )
+                    : const Text('로그인', style: TextStyle(fontSize: 16)),
               ),
               const SizedBox(height: 16.0),
 
@@ -138,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
               // 6. 소셜 로그인 버튼들
               // 구글로 로그인하기
               ElevatedButton.icon(
-                onPressed: _loginAndNavigate, // 임시로 홈으로 이동
+                onPressed: _isLoading ? null : _handleLogin, // 임시로 일반 로그인 함수 연결
                 icon: const Icon(
                   Icons.g_mobiledata,
                   color: Colors.black,
@@ -164,7 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // 네이버로 로그인하기
               ElevatedButton.icon(
-                onPressed: _loginAndNavigate, // 임시로 홈으로 이동
+                onPressed: _isLoading ? null : _handleLogin, // 임시로 일반 로그인 함수 연결
                 icon: const Icon(
                   Icons.ac_unit,
                   color: Colors.white,

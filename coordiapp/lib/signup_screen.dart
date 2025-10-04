@@ -1,5 +1,3 @@
-// lib/signup_screen.dart
-
 import 'dart:convert'; // JSON 인코딩을 위해 import
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,7 +40,6 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // 1. ▼▼▼ 각 입력 필드의 값을 가져오기 위한 컨트롤러 선언 ▼▼▼
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -52,29 +49,68 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _phoneNumberController = TextEditingController();
 
   String? _selectedGender;
-  bool _isLoading = false; // 로딩 상태를 위한 변수
+  bool _isLoading = false;
 
-  // 2. ▼▼▼ 회원가입 버튼을 눌렀을 때 서버와 통신하는 함수 ▼▼▼
+  // --- ▼▼▼ 비밀번호 유효성 검사를 위한 상태 변수 추가 ▼▼▼ ---
+  bool _isPasswordLengthOk = false;
+  bool _hasLetter = false;
+  bool _hasNumber = false;
+  bool _hasSpecialChar = false;
+  bool _passwordsMatch = false;
+  // --- ▲▲▲ 비밀번호 유효성 검사를 위한 상태 변수 추가 ▲▲▲ ---
+
+  @override
+  void initState() {
+    super.initState();
+    // 컨트롤러에 리스너 추가하여 입력 변경 감지
+    _passwordController.addListener(_updatePasswordValidation);
+    _confirmPasswordController.addListener(_updateConfirmPasswordValidation);
+  }
+
+  // 비밀번호 규칙 실시간 검사 함수
+  void _updatePasswordValidation() {
+    final password = _passwordController.text;
+    setState(() {
+      _isPasswordLengthOk = password.length >= 8;
+      _hasLetter = RegExp(r'[a-zA-Z]').hasMatch(password);
+      _hasNumber = RegExp(r'[0-9]').hasMatch(password);
+      _hasSpecialChar = RegExp(r'[!@#\$%\^&\*]').hasMatch(password);
+    });
+    // 비밀번호가 변경될 때마다 비밀번호 확인 필드도 다시 검사
+    _updateConfirmPasswordValidation();
+  }
+
+  // 비밀번호 일치 여부 실시간 검사 함수
+  void _updateConfirmPasswordValidation() {
+    setState(() {
+      _passwordsMatch =
+          _passwordController.text.isNotEmpty &&
+          _passwordController.text == _confirmPasswordController.text;
+    });
+  }
+
   Future<void> _handleSignup() async {
-    // 모든 입력 필드의 유효성 검사
     if (!(_formKey.currentState?.validate() ?? false)) return;
-
-    // 비밀번호와 비밀번호 확인이 일치하는지 검사
-    if (_passwordController.text != _confirmPasswordController.text) {
+    if (!_passwordsMatch) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('비밀번호가 일치하지 않습니다.')));
       return;
     }
+    // 모든 비밀번호 규칙이 충족되었는지 확인
+    if (!(_isPasswordLengthOk && _hasLetter && _hasNumber && _hasSpecialChar)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('비밀번호 규칙을 모두 만족해주세요.')));
+      return;
+    }
 
-    setState(() => _isLoading = true); // 로딩 시작
+    setState(() => _isLoading = true);
 
     try {
-      // EC2 서버의 IP 주소
       const serverIp = '3.36.66.130';
       final url = Uri.parse('http://$serverIp:5000/register');
 
-      // 서버로 보낼 데이터를 Map 형태로 구성
       final Map<String, String?> userData = {
         'email': _emailController.text,
         'password': _passwordController.text,
@@ -84,7 +120,6 @@ class _SignupScreenState extends State<SignupScreen> {
         'phone_number': _phoneNumberController.text,
       };
 
-      // HTTP POST 요청 보내기
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -92,25 +127,21 @@ class _SignupScreenState extends State<SignupScreen> {
       );
 
       if (mounted) {
-        // 서버로부터 받은 응답을 JSON으로 파싱
         final responseData = jsonDecode(response.body);
         final message = responseData['message'];
 
         if (response.statusCode == 200) {
-          // 성공
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(message)));
-          Navigator.of(context).pop(); // 회원가입 성공 시 로그인 화면으로 돌아가기
+          Navigator.of(context).pop();
         } else {
-          // 실패 (예: 이메일 중복 등)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(message), backgroundColor: Colors.red),
           );
         }
       }
     } catch (e) {
-      // 네트워크 오류 등 예외 발생 시
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -120,17 +151,8 @@ class _SignupScreenState extends State<SignupScreen> {
         );
       }
     } finally {
-      setState(() => _isLoading = false); // 로딩 종료
+      setState(() => _isLoading = false);
     }
-  }
-
-  // ... 나머지 함수들 (_validatePassword, _selectDate 등)은 그대로 유지 ...
-  String? _validatePassword(String? value) {
-    if (value == null || value.isEmpty) return '비밀번호를 입력하세요.';
-    String pattern = r'^(?=.*[a-z])(?=.*[0-9])(?=.*[!@#\$%\^&\*])(?=.{8,})';
-    RegExp regExp = RegExp(pattern);
-    if (!regExp.hasMatch(value)) return '소문자, 숫자, 특수문자를 포함하여 8자리 이상 입력해주세요.';
-    return null;
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -149,7 +171,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   void dispose() {
-    // 컨트롤러 메모리 해제
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -158,6 +179,25 @@ class _SignupScreenState extends State<SignupScreen> {
     _phoneNumberController.dispose();
     super.dispose();
   }
+
+  // --- ▼▼▼ 유효성 검사 결과를 보여줄 위젯 추가 ▼▼▼ ---
+  Widget _buildValidationRow(String text, bool isValid) {
+    return Row(
+      children: [
+        Icon(
+          isValid ? Icons.check_circle : Icons.check_circle_outline,
+          color: isValid ? Colors.green : Colors.red,
+          size: 20,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          text,
+          style: TextStyle(color: isValid ? Colors.green : Colors.red),
+        ),
+      ],
+    );
+  }
+  // --- ▲▲▲ 유효성 검사 결과를 보여줄 위젯 추가 ▲▲▲ ---
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +212,6 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 3. ▼▼▼ 각 TextFormField에 컨트롤러 연결 ▼▼▼
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(labelText: '아이디 (이메일 주소)'),
@@ -185,21 +224,59 @@ class _SignupScreenState extends State<SignupScreen> {
                   controller: _passwordController,
                   decoration: const InputDecoration(labelText: '비밀번호'),
                   obscureText: true,
-                  validator: _validatePassword,
+                  // validator는 제출 시에만 동작하므로 실시간 UI는 리스너로 처리
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return '비밀번호를 입력하세요.';
+                    }
+                    if (!(_isPasswordLengthOk &&
+                        _hasLetter &&
+                        _hasNumber &&
+                        _hasSpecialChar)) {
+                      return '비밀번호 규칙을 모두 만족해주세요.';
+                    }
+                    return null;
+                  },
                 ),
+                const SizedBox(height: 8),
+
+                // --- ▼▼▼ 비밀번호 규칙 UI 표시 ▼▼▼ ---
+                _buildValidationRow('8자 이상', _isPasswordLengthOk),
+                _buildValidationRow('영문 포함', _hasLetter),
+                _buildValidationRow('숫자 포함', _hasNumber),
+                _buildValidationRow('특수문자 포함', _hasSpecialChar),
+
+                // --- ▲▲▲ 비밀번호 규칙 UI 표시 ▲▲▲ ---
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _confirmPasswordController,
                   decoration: const InputDecoration(labelText: '비밀번호 확인'),
                   obscureText: true,
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return '비밀번호를 다시 입력하세요.';
-                    if (value != _passwordController.text)
+                    }
+                    if (value != _passwordController.text) {
                       return '비밀번호가 일치하지 않습니다.';
+                    }
                     return null;
                   },
                 ),
+                const SizedBox(height: 8),
+
+                // --- ▼▼▼ 비밀번호 일치 여부 UI 표시 ▼▼▼ ---
+                Text(
+                  _confirmPasswordController.text.isEmpty
+                      ? '' // 확인 칸이 비어있으면 아무것도 표시하지 않음
+                      : _passwordsMatch
+                      ? '비밀번호가 일치합니다'
+                      : '비밀번호가 일치하지 않습니다',
+                  style: TextStyle(
+                    color: _passwordsMatch ? Colors.green : Colors.red,
+                  ),
+                ),
+
+                // --- ▲▲▲ 비밀번호 일치 여부 UI 표시 ▲▲▲ ---
                 const SizedBox(height: 24),
                 TextFormField(
                   controller: _nameController,
@@ -217,7 +294,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     Expanded(
                       child: RadioListTile<String>(
                         title: const Text('남'),
-                        value: '남',
+                        value: 'M', // 서버 요구사항에 맞게 '남' -> 'M' 등으로 변경 가능
                         groupValue: _selectedGender,
                         onChanged: (value) =>
                             setState(() => _selectedGender = value),
@@ -226,7 +303,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     Expanded(
                       child: RadioListTile<String>(
                         title: const Text('여'),
-                        value: '여',
+                        value: 'F', // 서버 요구사항에 맞게 '여' -> 'F' 등으로 변경 가능
                         groupValue: _selectedGender,
                         onChanged: (value) =>
                             setState(() => _selectedGender = value),
@@ -252,11 +329,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   ],
                 ),
                 const SizedBox(height: 32),
-                // 4. ▼▼▼ 회원가입 버튼 클릭 시 _handleSignup 함수 호출 ▼▼▼
                 ElevatedButton(
-                  onPressed: _isLoading
-                      ? null
-                      : _handleSignup, // 로딩 중에는 버튼 비활성화
+                  onPressed: _isLoading ? null : _handleSignup,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.black,
                     foregroundColor: Colors.white,

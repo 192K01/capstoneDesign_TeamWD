@@ -1,61 +1,35 @@
 import 'package:flutter/material.dart';
+import 'dart:io'; // Image.file을 사용하기 위해 import
 import '../data/database_helper.dart';
 
+
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({Key? key}) : super(key: key);
 
   @override
-  State<SearchScreen> createState() => _SearchScreenState();
+  // SearchScreenState 클래스를 공개로 유지합니다 (main.dart에서 사용).
+  SearchScreenState createState() => SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> {
-  final TextEditingController _searchController = TextEditingController();
-
-  // DB 검색 결과를 담을 리스트
-  List<Map<String, dynamic>> _searchResults = [];
-  bool _isLoading = false;
-
-  // 활성화된 필터 (UI용)
-  final List<String> _activeFilters = [];
-  final Map<String, List<String>> _filterOptions = {
-    '스타일': ['캐주얼', '스트릿', '포멀', '비즈니스 캐주얼'],
-    'TPO': ['일상 & 캐주얼', '비즈니스 & 포멀', '특별한 날 & 데이트', '활동적인 날'],
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    // 화면이 처음 열릴 때 모든 옷 데이터를 불러옴
-    _performSearch();
+class SearchScreenState extends State<SearchScreen> {
+  // performSearch 함수는 이제 아무 동작도 하지 않습니다.
+  // main.dart에서 호출될 때 오류가 나지 않도록 형태만 남겨둡니다.
+  Future<void> performSearch() async {
+    // 아무 작업도 수행하지 않음
+    return;
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  // --- ▼▼▼ [추가] 상세 정보 팝업을 띄우는 함수 ▼▼▼ ---
+  void _showClothDetails(Map<String, dynamic> cloth) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        // 별도의 위젯으로 분리하여 팝업 UI를 구성합니다.
+        return ClothDetailDialog(cloth: cloth);
+      },
+    );
   }
-
-  // 데이터베이스에 검색 및 필터링을 요청하는 함수
-  Future<void> _performSearch() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    final dbHelper = DatabaseHelper.instance;
-    final query = _searchController.text;
-
-    // 활성화된 필터를 '스타일'과 'TPO'로 구분
-    final styleFilters = _activeFilters.where((filter) => _filterOptions['스타일']!.contains(filter)).toList();
-    final tpoFilters = _activeFilters.where((filter) => _filterOptions['TPO']!.contains(filter)).toList();
-
-    // DB 헬퍼에 검색어와 필터 목록을 전달
-    final results = await dbHelper.searchClothes(query, styleFilters: styleFilters, tpoFilters: tpoFilters);
-
-    setState(() {
-      _searchResults = results;
-      _isLoading = false;
-    });
-  }
+  // --- ▲▲▲ [추가] 상세 정보 팝업을 띄우는 함수 ▲▲▲ ---
 
   @override
   Widget build(BuildContext context) {
@@ -73,12 +47,11 @@ class _SearchScreenState extends State<SearchScreen> {
           child: TextField(
             controller: _searchController,
             decoration: const InputDecoration(
-              hintText: '옷 이름으로 검색', // 힌트 텍스트 변경
+              hintText: '옷 이름으로 검색',
               prefixIcon: Icon(Icons.search, color: Colors.grey),
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(vertical: 10),
             ),
-            // 텍스트가 변경될 때마다 검색 수행
             onChanged: (value) => _performSearch(),
           ),
         ),
@@ -116,7 +89,7 @@ class _SearchScreenState extends State<SearchScreen> {
           setState(() {
             _activeFilters.add(value);
           });
-          _performSearch(); // 필터가 추가되면 검색을 다시 수행
+          _performSearch();
         }
       },
       itemBuilder: (BuildContext context) {
@@ -158,7 +131,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   setState(() {
                     _activeFilters.remove(filter);
                   });
-                  _performSearch(); // 필터가 제거되면 검색을 다시 수행
+                  _performSearch();
                 },
                 backgroundColor: Colors.black,
                 labelStyle: const TextStyle(color: Colors.white),
@@ -172,7 +145,7 @@ class _SearchScreenState extends State<SearchScreen> {
               setState(() {
                 _activeFilters.clear();
               });
-              _performSearch(); // 필터를 초기화하면 검색을 다시 수행
+              _performSearch();
             },
             child: const Text('초기화'),
           ),
@@ -201,39 +174,153 @@ class _SearchScreenState extends State<SearchScreen> {
         final cloth = _searchResults[index];
         final imagePath = cloth['clothingImg'] as String?;
 
-        return Card(
-          elevation: 0,
-          color: Colors.grey[200],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: imagePath != null && imagePath.isNotEmpty
-                    ? Image.asset(
-                  imagePath,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(child: Icon(Icons.error_outline, color: Colors.white));
-                  },
-                )
-                    : const Center(child: Icon(Icons.checkroom, size: 60, color: Colors.white)),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  cloth['name'] ?? '이름 없음',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+        // --- ▼▼▼ [수정] Card를 InkWell로 감싸서 탭 이벤트를 추가 ▼▼▼ ---
+        return InkWell(
+          onTap: () => _showClothDetails(cloth), // 탭하면 팝업 함수 호출
+          borderRadius: BorderRadius.circular(12),
+          child: Card(
+            elevation: 0,
+            color: Colors.grey[200],
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: (imagePath != null && imagePath.isNotEmpty)
+                      ? (imagePath.startsWith('assets/'))
+                      ? Image.asset( // assets 이미지 처리
+                    imagePath,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                    const Center(child: Icon(Icons.error_outline, color: Colors.white)),
+                  )
+                      : Image.file( // 파일 경로 이미지 처리 (카메라/갤러리)
+                    File(imagePath),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                    const Center(child: Icon(Icons.error_outline, color: Colors.white)),
+                  )
+                      : const Center(child: Icon(Icons.checkroom, size: 60, color: Colors.white)),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    cloth['name'] ?? '이름 없음',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
+        // --- ▲▲▲ [수정] Card를 InkWell로 감싸서 탭 이벤트를 추가 ▲▲▲ ---
       },
+    );
+  }
+}
+
+// --- ▼▼▼ [추가] 옷 상세정보 팝업 위젯 ▼▼▼ ---
+class ClothDetailDialog extends StatelessWidget {
+  final Map<String, dynamic> cloth;
+
+  const ClothDetailDialog({super.key, required this.cloth});
+
+  @override
+  Widget build(BuildContext context) {
+    final imagePath = cloth['clothingImg'] as String?;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 상단 이미지
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16.0)),
+              child: Container(
+                height: 300,
+                color: Colors.grey[200],
+                child: (imagePath != null && imagePath.isNotEmpty)
+                    ? (imagePath.startsWith('assets/'))
+                    ? Image.asset(imagePath, fit: BoxFit.cover)
+                    : Image.file(File(imagePath), fit: BoxFit.cover)
+                    : const Center(child: Icon(Icons.checkroom, size: 80, color: Colors.white)),
+              ),
+            ),
+            // 하단 정보
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    cloth['name'] ?? '이름 없음',
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  _buildDetailRow(Icons.color_lens_outlined, '색상', cloth['color']),
+                  _buildDetailRow(Icons.category_outlined, '종류', '${cloth['category1'] ?? ''} > ${cloth['category2'] ?? ''}'),
+                  _buildDetailRow(Icons.thermostat_outlined, '계절', cloth['season']),
+                  _buildDetailRow(Icons.style_outlined, '스타일', cloth['style']),
+                  _buildDetailRow(Icons.event_outlined, 'TPO', cloth['tpo']),
+                  _buildDetailRow(Icons.notes_outlined, '리뷰', cloth['review']),
+                ],
+              ),
+            ),
+            // 수정 / 삭제 버튼
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        // TODO: 수정 기능 구현
+                        Navigator.pop(context);
+                      },
+                      child: const Text('수정'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        // TODO: 삭제 기능 구현
+                        Navigator.pop(context);
+                      },
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
+                      child: const Text('삭제'),
+                    ),
+                  )
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 정보 행을 만드는 헬퍼 위젯
+  Widget _buildDetailRow(IconData icon, String title, String? value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[600], size: 20),
+          const SizedBox(width: 12),
+          Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
+          const Spacer(),
+          Text(value ?? '정보 없음', style: TextStyle(color: Colors.grey[800])),
+        ],
+      ),
     );
   }
 }

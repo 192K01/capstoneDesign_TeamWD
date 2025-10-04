@@ -51,12 +51,15 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         // 서버로부터 받은 응답을 JSON으로 파싱
         final responseData = jsonDecode(response.body);
-        final message = responseData['message'];
 
         if (response.statusCode == 200) {
+          final message = responseData['message'];
+          final userName = responseData['userName'];
           // 로그인 성공 시
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true); // 로그인 상태 저장
+          await prefs.setString('userEmail', _emailController.text);
+          await prefs.setString('userName', userName);
 
           ScaffoldMessenger.of(
             context,
@@ -66,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
             MaterialPageRoute(builder: (context) => const MainScreen()),
           );
         } else {
+          final message = responseData['message'];
           // 로그인 실패 시 (예: 아이디 없음, 비밀번호 틀림 등)
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(message), backgroundColor: Colors.red),

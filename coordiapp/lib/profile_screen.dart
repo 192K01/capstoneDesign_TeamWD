@@ -1,21 +1,116 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({Key? key}) : super(key: key);
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ProfileScreenState createState() => ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+// --- ▼▼▼ [수정] State 클래스 이름 변경 및 기능 추가 ▼▼▼ ---
+class ProfileScreenState extends State<ProfileScreen>
+    with WidgetsBindingObserver {
   bool _isClosetTabSelected = true;
-  int _selectedFilterIndex = 1;
-  // 보유 옷, 저장 룩 개수(sql 연동)
-  int cloth_num = 0;
   int saved_look = 0;
 
-  final List<dynamic> _filterItems = [Icons.favorite, '전체', '상의', '하의', '신발'];
+  // --- ▼▼▼ [수정] 필터링 기능 추가 ▼▼▼ ---
+  List<Map<String, dynamic>> _allClosetItems = []; // 서버에서 받은 모든 옷
+  List<Map<String, dynamic>> _filteredClosetItems = []; // 현재 필터가 적용된 옷
+  bool _isLoading = true;
+  String _userName = "User Name";
+  String _selectedCategory = '전체'; // 현재 선택된 카테고리
+  final List<String> _filterCategories = ['전체', '상의', '하의', '신발'];
+
+  // --- ▲▲▲ [추가] 옷장 데이터를 위한 변수들 ▲▲▲ ---
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadUserDataAndClothes();
+  }
+
+  Future<void> _loadUserDataAndClothes() async {
+    await _loadUserName();
+    await performSearch();
+  }
+
+  Future<void> _loadUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    // 저장된 이름이 있으면 가져오고, 없으면 기본값을 사용합니다.
+    setState(() {
+      _userName = prefs.getString('userName') ?? 'User Name';
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      performSearch();
+    }
+  }
+
+  // --- ▼▼▼ [추가] 서버에서 옷 목록을 가져오는 함수 ▼▼▼ ---
+  Future<void> performSearch() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userEmail = prefs.getString('userEmail');
+      if (userEmail == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+      const String serverIp = '3.36.66.130';
+      final uri = Uri.parse('http://$serverIp:5000/clothes/$userEmail');
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> results = jsonDecode(
+          utf8.decode(response.bodyBytes),
+        );
+        if (mounted) {
+          setState(() {
+            _allClosetItems = results.cast<Map<String, dynamic>>();
+            _applyFilter(); // 데이터를 받은 후 필터 적용
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("옷 목록 로딩 중 오류 발생: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // --- ▲▲▲ [추가] 서버에서 옷 목록을 가져오는 함수 ▲▲▲ ---
+  void _applyFilter() {
+    if (_selectedCategory == '전체') {
+      _filteredClosetItems = List.from(_allClosetItems);
+    } else {
+      _filteredClosetItems = _allClosetItems
+          .where((item) => item['subCategory'] == _selectedCategory)
+          .toList();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,12 +141,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildProfileHeader(),
           _buildProfileTabs(),
           if (_isClosetTabSelected) _buildFilterBar(),
-          _isClosetTabSelected ? _buildClosetGrid() : _buildBookmarkScreen(),
+          // --- ▼▼▼ [수정] Expanded로 감싸서 남은 공간을 채우도록 변경 ▼▼▼ ---
+          Expanded(
+            child: _isClosetTabSelected
+                ? _buildClosetGrid()
+                : _buildBookmarkScreen(),
+          ),
+          // --- ▲▲▲ [수정] Expanded로 감싸서 남은 공간을 채우도록 변경 ▲▲▲ ---
         ],
       ),
     );
   }
 
+  // (이하 _buildProfileHeader, _buildProfileTabs, _buildTabItem, _buildFilterBar는 기존 코드와 동일)
   Widget _buildProfileHeader() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -68,17 +170,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'User Name',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                Text(
+                  _userName,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  '보유 옷 $cloth_num개 • 저장 룩 $saved_look개',
+                  '보유 옷 ${_allClosetItems.length}개 • 저장 룩 $saved_look개',
                   style: const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 1),
-                // 아이콘 추가된 코드
                 ElevatedButton.icon(
                   onPressed: () {},
                   style: ElevatedButton.styleFrom(
@@ -89,13 +193,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  // icon 속성 추가
-                  icon: const Icon(
-                    Icons.edit, // 연필 모양 아이콘
-                    size: 15, // 아이콘 크기
-                    color: Colors.black,
-                  ),
-                  // 기존 child를 label 속성으로 변경
+                  icon: const Icon(Icons.edit, size: 15, color: Colors.black),
                   label: const Text(
                     '프로필 편집',
                     style: TextStyle(color: Colors.black, fontSize: 12),
@@ -109,19 +207,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ▼▼▼ 이 함수 부분을 수정했습니다 ▼▼▼
   Widget _buildProfileTabs() {
     return Container(
       height: 50,
-      decoration: BoxDecoration(
-        // // 전체 영역에 회색 밑줄을 다시 추가합니다.
-        // border: Border(
-        //   bottom: BorderSide(color: Colors.grey[300]!, width: 2),
-        // ),
-      ),
+      decoration: BoxDecoration(),
       child: Row(
         children: [
-          // 옷장 탭
           _buildTabItem(
             icon: Icons.checkroom,
             isSelected: _isClosetTabSelected,
@@ -131,7 +222,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }
             },
           ),
-          // 북마크 탭
           _buildTabItem(
             icon: Icons.bookmark_border,
             isSelected: !_isClosetTabSelected,
@@ -146,7 +236,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // 탭 아이템을 만드는 함수 (새로 추가)
   Widget _buildTabItem({
     required IconData icon,
     required bool isSelected,
@@ -156,11 +245,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          color: Colors.transparent, // 터치 영역을 확장하기 위해 색상을 투명으로 설정
+          color: Colors.transparent,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // 아이콘과 하단 선 사이에 공간을 만들기 위해 Expanded를 사용합니다.
               Expanded(
                 child: Icon(
                   icon,
@@ -168,7 +256,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: isSelected ? Colors.black : Colors.grey,
                 ),
               ),
-              // 선택되었을 때만 검은색 선을 표시합니다.
               Container(
                 height: 2,
                 color: isSelected ? Colors.black : Colors.grey[300]!,
@@ -185,127 +272,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 4.0),
       child: SizedBox(
         height: 36,
-        child: Row(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: List.generate(_filterItems.length, (index) {
-                    var item = _filterItems[index];
-                    bool isSelected = _selectedFilterIndex == index;
-                    bool isIcon = item is IconData;
-
-                    final buttonPadding = const EdgeInsets.symmetric(
-                      horizontal: 12,
-                    );
-                    final buttonMinSize = const Size(0, 36);
-
-                    final ButtonStyle selectedStyle = ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: _filterCategories.map((category) {
+              bool isSelected = _selectedCategory == category;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedCategory = category;
+                      _applyFilter(); // 필터를 누를 때마다 적용
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isSelected ? Colors.black : Colors.white,
+                    foregroundColor: isSelected ? Colors.white : Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: isSelected ? Colors.black : Colors.grey,
                       ),
-                      padding: buttonPadding,
-                      minimumSize: buttonMinSize,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    );
-
-                    final ButtonStyle unselectedStyle =
-                        OutlinedButton.styleFrom(
-                          foregroundColor: Colors.black,
-                          side: const BorderSide(color: Colors.grey),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: buttonPadding,
-                          minimumSize: buttonMinSize,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        );
-
-                    Widget button;
-                    if (isSelected) {
-                      button = ElevatedButton(
-                        onPressed: () {},
-                        style: selectedStyle,
-                        child: isIcon
-                            ? Icon(item, size: 20)
-                            : Text(item as String),
-                      );
-                    } else {
-                      button = OutlinedButton(
-                        onPressed: () =>
-                            setState(() => _selectedFilterIndex = index),
-                        style: unselectedStyle,
-                        child: isIcon
-                            ? Icon(item, size: 20)
-                            : Text(item as String),
-                      );
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: button,
-                    );
-                  }),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(category),
                 ),
-              ),
-            ),
-            OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.black,
-                side: const BorderSide(color: Colors.grey),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(36, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Icon(Icons.swap_vert, size: 20),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildClosetGrid() {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
-        child: GridView.builder(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 1 / 1.2,
+              );
+            }).toList(),
           ),
-          itemCount: 15,
-          itemBuilder: (context, index) {
-            return Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Center(
-                child: Icon(Icons.image, color: Colors.white, size: 40),
-              ),
-            );
-          },
         ),
       ),
     );
   }
+
+  // --- ▼▼▼ [수정] _buildClosetGrid 함수를 서버 데이터와 연동 ▼▼▼ ---
+  Widget _buildClosetGrid() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_filteredClosetItems.isEmpty) {
+      return Center(child: Text('해당 카테고리에 옷이 없습니다.'));
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
+      child: GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 1 / 1.2,
+        ),
+        itemCount: _filteredClosetItems.length,
+        itemBuilder: (context, index) {
+          final cloth = _filteredClosetItems[index];
+          final imagePath = cloth['clothingImg'] as String?;
+          return Card(
+            elevation: 0,
+            color: Colors.grey[200],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: (imagePath != null && imagePath.isNotEmpty)
+                ? Image.file(
+                    File(imagePath),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(
+                        child: Icon(Icons.error_outline, color: Colors.white),
+                      );
+                    },
+                  )
+                : const Center(
+                    child: Icon(Icons.checkroom, size: 40, color: Colors.white),
+                  ),
+          );
+        },
+      ),
+    );
+  }
+  // --- ▲▲▲ [수정] _buildClosetGrid 함수를 서버 데이터와 연동 ▲▲▲ ---
 
   Widget _buildBookmarkScreen() {
-    return const Expanded(
-      child: Center(
-        child: Text(
-          'Bookmark Screen',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+    return const Center(
+      child: Text(
+        'Bookmark Screen',
+        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
       ),
     );
   }

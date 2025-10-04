@@ -44,7 +44,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       // 로그인 상태에 따라 첫 화면을 결정합니다.
       // isLoggedIn이 true이면 MainScreen을, false이면 LoginScreen을 보여줍니다.
-      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
+      home: const LoginScreen(),
     );
   }
 }
@@ -60,13 +60,21 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isMenuOpen = false;
 
-  // ▼▼▼ [수정] _pages 리스트에 SearchScreen 추가 ▼▼▼
-  static const List<Widget> _pages = <Widget>[
-    HomeScreen(),
-    SearchScreen(), // 검색 화면 위젯으로 교체
-    CalendarScreen(),
-    ProfileScreen(),
-  ];
+  final GlobalKey<ProfileScreenState> _profileScreenKey =
+      GlobalKey<ProfileScreenState>();
+
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = <Widget>[
+      const HomeScreen(),
+      const SearchScreen(),
+      const CalendarScreen(),
+      ProfileScreen(key: _profileScreenKey), // ProfileScreen에 key 전달
+    ];
+  }
 
   void _onItemTapped(int index) {
     if (index == 2) {
@@ -77,6 +85,9 @@ class _MainScreenState extends State<MainScreen> {
         _selectedIndex = pageIndex;
         if (_isMenuOpen) _isMenuOpen = false;
       });
+      if (pageIndex == 3) {
+        _profileScreenKey.currentState?.performSearch();
+      }
     }
   }
 
@@ -125,12 +136,22 @@ class _MainScreenState extends State<MainScreen> {
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: source);
       if (image != null && mounted) {
-        Navigator.push(
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => AddClothingScreen(imagePath: image.path),
           ),
         );
+        if (result == true) {
+          // 1. ProfileScreen을 새로고침합니다.
+          _profileScreenKey.currentState?.performSearch();
+          // 2. Profile 탭으로 자동 이동합니다.
+          setState(() {
+            // BottomNavigationBar 아이템 순서: Home(0), Search(1), Add(2), Calendar(3), Profile(4)
+            // 실제 페이지 인덱스: Home(0), Search(1), Calendar(2), Profile(3)
+            _selectedIndex = 3; // ProfileScreen의 페이지 인덱스는 3입니다.
+          });
+        }
       }
     } else {
       if (mounted) {

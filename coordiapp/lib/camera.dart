@@ -1,5 +1,3 @@
-// 📂 lib/camera.dart
-
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
@@ -7,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-
-import 'package:image/image.dart' as img; // image 패키지 import
-import 'data/database_helper.dart'; // DatabaseHelper import
-
+import 'package:image/image.dart' as img;
+// database_helper.dart가 lib/data/ 폴더에 있다면 아래 import를 사용하세요.
+import 'data/database_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AddClothingScreen extends StatefulWidget {
   final String imagePath;
@@ -26,14 +24,70 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
 
   String? _processedImagePath;
   bool _isProcessingImage = true;
-  String _processingStatusText = '배경 제거 중...';
+  String _processingStatusText = '분석 준비 중...';
 
-  String? _analyzedColorName;
+  // AI 분석 결과와 사용자의 최종 선택을 분리하여 관리
+  String? _selectedSubCategory;
+  String? _selectedArticleType;
+  String? _selectedColor;
+
   List<Map<String, dynamic>> _colorStandard = [];
 
-  String? _analyzedSubCategory;
-  String? _analyzedArticleType;
+  // 선택 옵션 목록
+  final Map<String, String> _subCategoryMap = {
+    'Topwear': '상의',
+    'Bottomwear': '하의',
+    'Shoes': '신발',
+  };
 
+  final Map<String, List<String>> _articleTypeOptions = {
+    '상의': [
+      'Tshirts',
+      'Sweaters',
+      'Shirts',
+      'Dresses',
+      'Waistcoat',
+      'Jumpsuit',
+      'Blazers',
+      'Jackets',
+    ],
+    '하의': [
+      'Shorts',
+      'Jeans',
+      'Skirts',
+      'Track Pants',
+      'Trousers',
+      'Capris',
+      'Leggings',
+    ],
+    '신발': [
+      'Casual Shoes',
+      'Flip Flops',
+      'Sandals',
+      'Formal Shoes',
+      'Flats',
+      'Sports Shoes',
+      'Heels',
+      'Sports Sandals',
+    ],
+  };
+
+  final Map<String, List<String>> _colorOptions = {
+    '상의': [
+      '화이트',
+      '화이트 계열',
+      '레드',
+      '핑크',
+      '오렌지',
+      '옐로우',
+      '그린',
+      '블루',
+      '네이비',
+      '블랙',
+      '그레이',
+    ],
+    '하의': ['연청', '진청', '베이지', '카키', '와인', '블랙', '화이트', '그레이'],
+  };
 
   @override
   void initState() {
@@ -41,43 +95,42 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     _initializeAndProcessImage();
   }
 
+  // --- ▼▼▼ [수정] 요청하신 분석 순서대로 로직 변경 ▼▼▼ ---
   Future<void> _initializeAndProcessImage() async {
+    // 1. 색상 기준 정보 미리 로드
     await _loadColorData();
 
+    // 2. 배경 제거 실행
+    if (mounted) setState(() => _processingStatusText = '배경 제거 중...');
     final newPath = await _removeBackground(widget.imagePath);
-    if (mounted) setState(() => _processedImagePath = newPath);
-
-    final imagePathForAnalysis = newPath ?? widget.imagePath;
-
-    // 색상 분석
-    if (newPath != null) {
-      if (mounted) setState(() => _processingStatusText = '색상 분석 중...');
-      final dominantColor = await _findDominantColor(imagePathForAnalysis);
-      if (dominantColor != null) {
-        final closestColorName = _findClosestColor(dominantColor, _colorStandard);
-        if (mounted) setState(() => _analyzedColorName = closestColorName);
-      }
-
+    if (mounted) {
+      setState(() => _processedImagePath = newPath);
     }
 
-    // 옷 종류 분석 함수 호출
+    // 분석에 사용할 이미지 경로 결정 (배경 제거 성공 시 새 경로, 실패 시 원본 경로)
+    final imagePathForAnalysis = newPath ?? widget.imagePath;
+
+    // 3. 옷 종류 분석 실행
     if (mounted) setState(() => _processingStatusText = '옷 종류 분석 중...');
     await _analyzeClothType(imagePathForAnalysis);
 
-    if (mounted) setState(() => _isProcessingImage = false);
-
-    else {
+    // 4. 색상 분석 실행
+    if (mounted) setState(() => _processingStatusText = '색상 분석 중...');
+    final dominantColor = await _findDominantColor(imagePathForAnalysis);
+    if (dominantColor != null) {
+      final closestColorName = _findClosestColor(dominantColor, _colorStandard);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('배경 제거에 실패했습니다. 원본 이미지로 진행합니다.')),
-        );
+        setState(() => _selectedColor = closestColorName);
       }
     }
+
+    // 5. 모든 처리 완료
+    if (mounted) setState(() => _isProcessingImage = false);
   }
+  // --- ▲▲▲ [수정] 요청하신 분석 순서대로 로직 변경 ▲▲▲ ---
 
   Future<void> _analyzeClothType(String imagePath) async {
     try {
-      // !!! 중요 !!! 실제 서버 IP 주소로 변경.
       const String serverIp = '3.36.66.130';
       final uri = Uri.parse('http://$serverIp:5000/predict');
 
@@ -92,16 +145,16 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
 
         if (mounted) {
           setState(() {
-            _analyzedSubCategory = data['subCategory'];
-            _analyzedArticleType = data['articleType'];
+            _selectedSubCategory = _subCategoryMap[data['subCategory']];
+            _selectedArticleType = data['articleType'];
           });
         }
       } else {
-        if (mounted) setState(() => _analyzedArticleType = '분석 실패 (서버 오류)');
+        if (mounted) setState(() => _selectedArticleType = '분석 실패 (서버 오류)');
       }
     } catch (e) {
       debugPrint('옷 종류 분석 중 예외 발생: $e');
-      if (mounted) setState(() => _analyzedArticleType = '분석 실패 (연결 오류)');
+      if (mounted) setState(() => _selectedArticleType = '분석 실패 (연결 오류)');
     }
   }
 
@@ -112,10 +165,15 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
   }
 
   Future<String?> _removeBackground(String imagePath) async {
-    const String apiKey = 'Hks4J4Kbnp7bEZRb1V64UPGt';
-    final request = http.MultipartRequest('POST', Uri.parse('https://api.remove.bg/v1.0/removebg'));
+    const String apiKey = 'HSmQd4FFG1ACQzMgTzU6iiyf'; // 실제 API 키로 교체하세요
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('https://api.remove.bg/v1.0/removebg'),
+    );
     request.headers['X-Api-Key'] = apiKey;
-    request.files.add(await http.MultipartFile.fromPath('image_file', imagePath));
+    request.files.add(
+      await http.MultipartFile.fromPath('image_file', imagePath),
+    );
     try {
       final streamedResponse = await request.send();
       if (streamedResponse.statusCode == 200) {
@@ -127,9 +185,26 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
         final file = File(newPath);
         await file.writeAsBytes(bytes);
         return newPath;
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('배경 제거 실패. 원본 이미지로 분석합니다.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('배경 제거 중 예외 발생: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('배경 제거 중 오류 발생. 원본 이미지로 분석합니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
     return null;
   }
@@ -138,22 +213,19 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     final bytes = await File(imagePath).readAsBytes();
     final image = img.decodeImage(bytes);
     if (image == null) return null;
-
     Map<int, int> colorCounts = {};
     int maxCount = 0;
     int dominantColor = 0;
-
     for (int y = 0; y < image.height; y++) {
       for (int x = 0; x < image.width; x++) {
         final pixel = image.getPixel(x, y);
         if (pixel.a > 0) {
           final color = Color.fromARGB(
-              pixel.a.toInt(),
-              pixel.r.toInt(),
-              pixel.g.toInt(),
-              pixel.b.toInt()
+            pixel.a.toInt(),
+            pixel.r.toInt(),
+            pixel.g.toInt(),
+            pixel.b.toInt(),
           ).value;
-
           colorCounts[color] = (colorCounts[color] ?? 0) + 1;
           if (colorCounts[color]! > maxCount) {
             maxCount = colorCounts[color]!;
@@ -165,29 +237,26 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     return Color(dominantColor);
   }
 
-  // 👇👇👇 이 함수가 수정되었습니다 👇👇👇
-  String _findClosestColor(Color dominantColor, List<Map<String, dynamic>> colorStandard) {
-    // ✨✨✨ 추가된 임계값 로직 ✨✨✨
-    // R, G, B 값이 모두 50보다 작으면 충분히 어두운 색으로 간주하여 '블랙'으로 바로 반환합니다.
-    if (dominantColor.red < 50 && dominantColor.green < 50 && dominantColor.blue < 50) {
+  String _findClosestColor(
+    Color dominantColor,
+    List<Map<String, dynamic>> colorStandard,
+  ) {
+    if (dominantColor.red < 50 &&
+        dominantColor.green < 50 &&
+        dominantColor.blue < 50) {
       return "블랙";
     }
-    // ✨✨✨ 여기까지 추가 ✨✨✨
-
     String closestColorName = '분석 불가';
     double minDistance = double.infinity;
-
     for (var colorData in colorStandard) {
       final r = colorData['r'] as int;
       final g = colorData['g'] as int;
       final b = colorData['b'] as int;
-
       final distance = sqrt(
-          pow(dominantColor.red - r, 2) +
-              pow(dominantColor.green - g, 2) +
-              pow(dominantColor.blue - b, 2)
+        pow(dominantColor.red - r, 2) +
+            pow(dominantColor.green - g, 2) +
+            pow(dominantColor.blue - b, 2),
       );
-
       if (distance < minDistance) {
         minDistance = distance;
         closestColorName = colorData['name_ko'] as String;
@@ -198,50 +267,101 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
 
   Future<void> _saveClothingItem() async {
     if (_isProcessingImage) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('아직 이미지 처리 중입니다.')));
+      return;
+    }
+    final String name = _nameController.text;
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('아직 이미지 처리 중입니다.')),
+        const SnackBar(
+          content: Text('옷 이름을 입력해주세요.'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
+
+    // --- ▼▼▼ [추가] 저장된 사용자 이메일 불러오기 ▼▼▼ ---
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+
+    if (userEmail == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('로그인 정보가 없습니다. 다시 로그인해주세요.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    // --- ▲▲▲ [추가] 저장된 사용자 이메일 불러오기 ▲▲▲ ---
+
     final imagePathToSave = _processedImagePath ?? widget.imagePath;
-    final String name = _nameController.text;
     final String memo = _memoController.text;
 
-    // 데이터베이스에 저장할 옷 정보 Map 생성
-    final newCloth = {
-      'user_id': 1, // 예시 사용자 ID
-      'name': name,
-      'color': _analyzedColorName,
-      'category1': '상의', // TODO: 추후 AI 분석 결과 또는 사용자 입력으로 대체
-      'category2': '기타', // TODO: 추후 AI 분석 결과 또는 사용자 입력으로 대체
-      'clothingImg': imagePathToSave,
-      'review': memo,
-      'season': '사계절', // TODO: 추후 사용자 입력으로 대체
-      'style': '캐주얼',   // TODO: 추후 사용자 입력으로 대체
-      'tpo': '일상 & 캐주얼' // TODO: 추후 사용자 입력으로 대체
-    };
+    try {
+      const String serverIp = '3.36.66.130';
+      final uri = Uri.parse('http://$serverIp:5000/clothes');
 
-    // 데이터베이스에 옷 추가
-    final dbHelper = DatabaseHelper.instance;
-    await dbHelper.addCloth(newCloth);
+      final newCloth = {
+        'email': userEmail, // 이메일을 함께 보냅니다.
+        'name': name,
+        'subCategory': _selectedSubCategory,
+        'articleType': _selectedArticleType,
+        'color': _selectedColor,
+        'clothingImg': imagePathToSave,
+        'memo': memo,
+      };
 
-    debugPrint('--- 저장된 옷 정보 ---');
-    debugPrint('옷 이름: $name');
-    debugPrint('메모: $memo');
-    debugPrint('분석된 색상: $_analyzedColorName');
-    debugPrint('최종 저장 이미지 경로: $imagePathToSave');
-    debugPrint('--------------------');
-
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('옷이 저장되었습니다!')),
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(newCloth),
       );
+
+      if (mounted) {
+        if (response.statusCode == 201) {
+          Navigator.pop(context, true);
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('옷이 옷장에 저장되었습니다!')));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('저장에 실패했습니다.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("저장 중 오류 발생: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('네트워크 오류로 저장에 실패했습니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 드롭다운 값 유효성 검사 (화면을 그릴 때마다 실행)
+    final articleTypeOptions = _articleTypeOptions[_selectedSubCategory] ?? [];
+    final validArticleType = articleTypeOptions.contains(_selectedArticleType)
+        ? _selectedArticleType
+        : null;
+
+    final colorOptions = _colorOptions[_selectedSubCategory] ?? [];
+    final validColor = colorOptions.contains(_selectedColor)
+        ? _selectedColor
+        : null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('새 옷 정보 입력'),
@@ -268,7 +388,10 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12.0),
                     child: _processedImagePath != null
-                        ? Image.file(File(_processedImagePath!), fit: BoxFit.cover)
+                        ? Image.file(
+                            File(_processedImagePath!),
+                            fit: BoxFit.cover,
+                          )
                         : Image.file(File(widget.imagePath), fit: BoxFit.cover),
                   ),
                 ),
@@ -285,7 +408,10 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                         children: [
                           const CircularProgressIndicator(color: Colors.white),
                           const SizedBox(height: 12),
-                          Text(_processingStatusText, style: const TextStyle(color: Colors.white)),
+                          Text(
+                            _processingStatusText,
+                            style: const TextStyle(color: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -294,50 +420,82 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
             ),
             const SizedBox(height: 24),
 
-            if (_analyzedSubCategory != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: TextField(
-                  readOnly: true,
-                  controller: TextEditingController(text: _analyzedSubCategory),
-                  decoration: InputDecoration(
-                    labelText: '분석된 중분류',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Colors.grey[200],
-                  ),
-                ),
+            // --- ▼▼▼ [수정] 드롭다운 UI ▼▼▼ ---
+            DropdownButtonFormField<String>(
+              value: _selectedSubCategory,
+              isExpanded: true, // 너비를 꽉 채우도록 설정
+              decoration: const InputDecoration(
+                labelText: '중분류',
+                border: OutlineInputBorder(),
               ),
+              onChanged: _isProcessingImage
+                  ? null
+                  : (String? newValue) {
+                      setState(() {
+                        _selectedSubCategory = newValue;
+                        _selectedArticleType = null;
+                        _selectedColor = null;
+                      });
+                    },
+              items: _subCategoryMap.values.map<DropdownMenuItem<String>>((
+                String value,
+              ) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
 
-            if (_analyzedArticleType != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: TextField(
-                  readOnly: true,
-                  controller: TextEditingController(text: _analyzedArticleType),
-                  decoration: InputDecoration(
-                    labelText: '분석된 상세 품목',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Colors.grey[200],
-                  ),
-                ),
+            DropdownButtonFormField<String>(
+              value: validArticleType,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: '상세 품목',
+                border: OutlineInputBorder(),
               ),
+              onChanged: (_selectedSubCategory == null || _isProcessingImage)
+                  ? null
+                  : (String? newValue) {
+                      setState(() => _selectedArticleType = newValue);
+                    },
+              items: articleTypeOptions.map<DropdownMenuItem<String>>((
+                String value,
+              ) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
 
-            if (_analyzedColorName != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: TextField(
-                  readOnly: true,
-                  controller: TextEditingController(text: _analyzedColorName),
-                  decoration: InputDecoration(
-                    labelText: '분석된 색상',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Colors.grey[200],
-                  ),
-                ),
+            DropdownButtonFormField<String>(
+              value: validColor,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: '색상',
+                border: OutlineInputBorder(),
               ),
+              onChanged:
+                  (_selectedSubCategory != '상의' &&
+                          _selectedSubCategory != '하의' ||
+                      _isProcessingImage)
+                  ? null
+                  : (String? newValue) {
+                      setState(() => _selectedColor = newValue);
+                    },
+              items: colorOptions.map<DropdownMenuItem<String>>((String value) {
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(value),
+                );
+              }).toList(),
+            ),
+
+            // --- ▲▲▲ [수정] 드롭다운 UI ▲▲▲ ---
+            const SizedBox(height: 16),
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(
@@ -360,7 +518,10 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textStyle: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               onPressed: _isProcessingImage ? null : _saveClothingItem,
               child: const Text('저장하기'),

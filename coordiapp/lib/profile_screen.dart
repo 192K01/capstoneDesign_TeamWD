@@ -12,7 +12,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isClosetTabSelected = true;
   int _selectedFilterIndex = 1;
-  // 보유 옷, 저장 룩 개수
+  // 보유 옷, 저장 룩 개수(sql 연동)
   int cloth_num = 0;
   int saved_look = 0;
 

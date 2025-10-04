@@ -2,60 +2,21 @@ import 'package:flutter/material.dart';
 import 'dart:io'; // Image.file을 사용하기 위해 import
 import '../data/database_helper.dart';
 
+
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({Key? key}) : super(key: key);
 
   @override
-  State<SearchScreen> createState() => _SearchScreenState();
+  // SearchScreenState 클래스를 공개로 유지합니다 (main.dart에서 사용).
+  SearchScreenState createState() => SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> {
-  final TextEditingController _searchController = TextEditingController();
-
-  // DB 검색 결과를 담을 리스트
-  List<Map<String, dynamic>> _searchResults = [];
-  bool _isLoading = false;
-
-  // 활성화된 필터 (UI용)
-  final List<String> _activeFilters = [];
-  final Map<String, List<String>> _filterOptions = {
-    '스타일': ['캐주얼', '스트릿', '포멀', '비즈니스 캐주얼'],
-    'TPO': ['일상 & 캐주얼', '비즈니스 & 포멀', '특별한 날 & 데이트', '활동적인 날'],
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    // 화면이 처음 열릴 때 모든 옷 데이터를 불러옴
-    _performSearch();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  // 데이터베이스에 검색 및 필터링을 요청하는 함수
-  Future<void> _performSearch() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    final dbHelper = DatabaseHelper.instance;
-    final query = _searchController.text;
-
-    // 활성화된 필터를 '스타일'과 'TPO'로 구분
-    final styleFilters = _activeFilters.where((filter) => _filterOptions['스타일']!.contains(filter)).toList();
-    final tpoFilters = _activeFilters.where((filter) => _filterOptions['TPO']!.contains(filter)).toList();
-
-    // DB 헬퍼에 검색어와 필터 목록을 전달
-    final results = await dbHelper.searchClothes(query, styleFilters: styleFilters, tpoFilters: tpoFilters);
-
-    setState(() {
-      _searchResults = results;
-      _isLoading = false;
-    });
+class SearchScreenState extends State<SearchScreen> {
+  // performSearch 함수는 이제 아무 동작도 하지 않습니다.
+  // main.dart에서 호출될 때 오류가 나지 않도록 형태만 남겨둡니다.
+  Future<void> performSearch() async {
+    // 아무 작업도 수행하지 않음
+    return;
   }
 
   // --- ▼▼▼ [추가] 상세 정보 팝업을 띄우는 함수 ▼▼▼ ---
@@ -363,4 +324,3 @@ class ClothDetailDialog extends StatelessWidget {
     );
   }
 }
-// --- ▲▲▲ [추가] 옷 상세정보 팝업 위젯 ▲▲▲ ---

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:intl/intl.dart';
 
 class ScheduleAddScreen extends StatefulWidget {
   const ScheduleAddScreen({super.key});
@@ -12,6 +13,82 @@ class ScheduleAddScreen extends StatefulWidget {
 
 class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   bool _isAllDay = false;
+
+  DateTime _startDate = DateTime.now();
+  DateTime _endDate = DateTime.now();
+
+  TimeOfDay _startTime = TimeOfDay.now();
+  TimeOfDay _endTime = TimeOfDay.now().replacing(hour: TimeOfDay.now().hour + 1);
+
+  Future<void> _selectDate(BuildContext context, bool isStartDate) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: isStartDate ? _startDate : _endDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null && picked != (isStartDate ? _startDate : _endDate)) {
+      setState(() {
+        if (isStartDate) {
+          _startDate = picked;
+          if (_startDate.isAfter(_endDate)) {
+            _endDate = _startDate;
+          }
+        } else {
+          _endDate = picked;
+        }
+      });
+    }
+  }
+
+  // ▼▼▼ 이 함수 부분을 수정했습니다 ▼▼▼
+  // 스크롤 방식의 시간 선택기를 띄우는 함수
+  void _showTimePicker(BuildContext context, bool isStartTime) {
+    // 현재 선택된 시간을 DateTime 객체로 변환 (CupertinoDatePicker에 필요)
+    final initialDateTime = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+      isStartTime ? _startTime.hour : _endTime.hour,
+      isStartTime ? _startTime.minute : _endTime.minute,
+    );
+
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext builder) {
+        return SizedBox(
+          height: 250,
+          child: Column(
+            children: [
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  use24hFormat: true, // 24시간 형식 사용
+                  initialDateTime: initialDateTime,
+                  onDateTimeChanged: (DateTime newDateTime) {
+                    // 스크롤할 때마다 상태를 바로 업데이트
+                    setState(() {
+                      if (isStartTime) {
+                        _startTime = TimeOfDay.fromDateTime(newDateTime);
+                      } else {
+                        _endTime = TimeOfDay.fromDateTime(newDateTime);
+                      }
+                    });
+                  },
+                ),
+              ),
+              CupertinoButton(
+                child: const Text('확인'),
+                onPressed: () {
+                  Navigator.pop(context); // 팝업 닫기
+                },
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +152,14 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   }
 
   Widget _buildDateTimeSection() {
+    final DateFormat formatter = DateFormat('M월 d일 EEEE', 'ko_KR');
+
+    String formatTimeOfDay(TimeOfDay tod) {
+      final hour = tod.hour.toString().padLeft(2, '0');
+      final minute = tod.minute.toString().padLeft(2, '0');
+      return '$hour:$minute';
+    }
+
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -101,18 +186,42 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('3월 4일 화요일', style: TextStyle(fontSize: 16)),
+              GestureDetector(
+                onTap: () => _selectDate(context, true),
+                child: Container(
+                  color: Colors.transparent,
+                  child: Text(formatter.format(_startDate), style: const TextStyle(fontSize: 16)),
+                ),
+              ),
               if (!_isAllDay)
-                const Text('09:41', style: TextStyle(fontSize: 16)),
+                GestureDetector(
+                  onTap: () => _showTimePicker(context, true),
+                  child: Container(
+                    color: Colors.transparent,
+                    child: Text(formatTimeOfDay(_startTime), style: const TextStyle(fontSize: 16)),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('3월 4일 화요일', style: TextStyle(fontSize: 16)),
+              GestureDetector(
+                onTap: () => _selectDate(context, false),
+                child: Container(
+                  color: Colors.transparent,
+                  child: Text(formatter.format(_endDate), style: const TextStyle(fontSize: 16)),
+                ),
+              ),
               if (!_isAllDay)
-                const Text('10:41', style: TextStyle(fontSize: 16)),
+                GestureDetector(
+                  onTap: () => _showTimePicker(context, false),
+                  child: Container(
+                    color: Colors.transparent,
+                    child: Text(formatTimeOfDay(_endTime), style: const TextStyle(fontSize: 16)),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -130,7 +239,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     );
   }
 
-  // ▼▼▼ 이 함수 부분을 수정했습니다 ▼▼▼
   Widget _buildOptionTile({required IconData icon, required String title, String? subtitle, String? value}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -147,7 +255,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
             children: [
               Row(
                 children: [
-                  // title이 '기본일정'일 경우에만 파란색 원 아이콘을 표시합니다.
                   if (title == '기본일정')
                     const Padding(
                       padding: EdgeInsets.only(right: 8.0),
@@ -158,7 +265,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               ),
               if (subtitle != null)
                 Padding(
-                  // '기본일정'일 때만 subtitle의 왼쪽 여백을 줘서 줄을 맞춥니다.
                   padding: EdgeInsets.only(left: title == '기본일정' ? 20 : 0),
                   child: Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 14)),
                 )

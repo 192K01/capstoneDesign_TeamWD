@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
+import 'location_search_screen.dart';
 
 class ScheduleAddScreen extends StatefulWidget {
   const ScheduleAddScreen({super.key});
@@ -18,7 +19,11 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   DateTime _endDate = DateTime.now();
 
   TimeOfDay _startTime = TimeOfDay.now();
-  TimeOfDay _endTime = TimeOfDay.now().replacing(hour: TimeOfDay.now().hour + 1);
+  TimeOfDay _endTime = TimeOfDay(hour: (TimeOfDay.now().hour + 1) % 24, minute: TimeOfDay.now().minute);
+
+  // ▼▼▼ 위치 정보를 장소 이름과 주소로 나누어 저장하도록 변수 수정 ▼▼▼
+  String _locationName = '위치';
+  String _locationAddress = '도로명주소';
 
   Future<void> _selectDate(BuildContext context, bool isStartDate) async {
     final DateTime? picked = await showDatePicker(
@@ -41,17 +46,9 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     }
   }
 
-  // ▼▼▼ 이 함수 부분을 수정했습니다 ▼▼▼
-  // 스크롤 방식의 시간 선택기를 띄우는 함수
   void _showTimePicker(BuildContext context, bool isStartTime) {
-    // 현재 선택된 시간을 DateTime 객체로 변환 (CupertinoDatePicker에 필요)
-    final initialDateTime = DateTime(
-      DateTime.now().year,
-      DateTime.now().month,
-      DateTime.now().day,
-      isStartTime ? _startTime.hour : _endTime.hour,
-      isStartTime ? _startTime.minute : _endTime.minute,
-    );
+    final initialDateTime = DateTime(DateTime.now().year, DateTime.now().month,
+        DateTime.now().day, isStartTime ? _startTime.hour : _endTime.hour, isStartTime ? _startTime.minute : _endTime.minute);
 
     showModalBottomSheet(
       context: context,
@@ -63,10 +60,9 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               Expanded(
                 child: CupertinoDatePicker(
                   mode: CupertinoDatePickerMode.time,
-                  use24hFormat: true, // 24시간 형식 사용
+                  use24hFormat: true,
                   initialDateTime: initialDateTime,
                   onDateTimeChanged: (DateTime newDateTime) {
-                    // 스크롤할 때마다 상태를 바로 업데이트
                     setState(() {
                       if (isStartTime) {
                         _startTime = TimeOfDay.fromDateTime(newDateTime);
@@ -80,7 +76,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               CupertinoButton(
                 child: const Text('확인'),
                 onPressed: () {
-                  Navigator.pop(context); // 팝업 닫기
+                  Navigator.pop(context);
                 },
               )
             ],
@@ -88,6 +84,22 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
         );
       },
     );
+  }
+
+  // ▼▼▼ Map 형태로 결과를 받아 처리하도록 함수 수정 ▼▼▼
+  Future<void> _navigateToLocationSearch() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const LocationSearchScreen()),
+    );
+
+    // 결과가 Map 형태인지 확인하고 상태를 업데이트합니다.
+    if (result != null && result is Map) {
+      setState(() {
+        _locationName = result['name'] ?? '위치';
+        _locationAddress = result['address'] ?? '도로명주소';
+      });
+    }
   }
 
   @override
@@ -122,7 +134,11 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
           const SizedBox(height: 16),
           _buildOptionTile(icon: Icons.calendar_today_outlined, title: '기본일정', subtitle: '내 캘린더'),
           const SizedBox(height: 16),
-          _buildOptionTile(icon: Icons.location_on_outlined, title: '위치', subtitle: '도로명주소'),
+          // ▼▼▼ 수정된 변수를 사용하여 UI를 업데이트합니다 ▼▼▼
+          GestureDetector(
+            onTap: _navigateToLocationSearch,
+            child: _buildOptionTile(icon: Icons.location_on_outlined, title: _locationName, subtitle: _locationAddress),
+          ),
           const SizedBox(height: 16),
           _buildOptionTile(icon: Icons.people_outline, title: '참가자', value: '참가자 없음'),
           const SizedBox(height: 16),
@@ -133,6 +149,8 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       ),
     );
   }
+
+  // ( ... 이하 코드는 이전과 동일합니다 ... )
 
   Widget _buildTitleInput() {
     return Container(

@@ -26,14 +26,16 @@ class DatabaseHelper {
 
   // 앱이 처음 설치될 때 한 번만 호출되어 테이블들을 생성합니다.
   Future _onCreate(Database db, int version) async {
-    // 1. schedule 테이블 생성
+    // 1. schedule 테이블 생성 (수정)
     await db.execute('''
       CREATE TABLE schedule(
-          schedule_id INTEGER PRIMARY KEY,
+          schedule_id INTEGER PRIMARY KEY AUTOINCREMENT, // AUTOINCREMENT 추가
           user_id INTEGER,
           title TEXT,
           startDate TEXT,
           endDate TEXT,
+          startTime TEXT, // 시작 시간 컬럼 추가
+          endTime TEXT, // 종료 시간 컬럼 추가
           location TEXT,
           explanation TEXT,
           category TEXT,

@@ -684,21 +684,21 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                                       Text(
                                         _minTemp!,
                                         style: const TextStyle(
-                                          fontSize: 13,
+                                          fontSize: 11,
                                           color: Colors.blue,
                                         ),
                                       ),
                                       Text(
                                         ' / ',
                                         style: TextStyle(
-                                          fontSize: 13,
+                                          fontSize: 11,
                                           color: Colors.grey[700],
                                         ),
                                       ),
                                       Text(
                                         _maxTemp!,
                                         style: const TextStyle(
-                                          fontSize: 13,
+                                          fontSize: 11,
                                           color: Colors.red,
                                         ),
                                       ),

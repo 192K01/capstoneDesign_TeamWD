@@ -56,15 +56,22 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       const serverIp = '3.36.66.130'; // 실제 서버 IP
       final url = Uri.parse('http://$serverIp:5000/schedule');
 
+      // ▼▼▼ [수정] startTime과 endTime을 문자열로 변환하여 추가 ▼▼▼
+      final String startTimeString = _isAllDay ? '00:00' : '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
+      final String endTimeString = _isAllDay ? '23:59' : '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
+
       final scheduleData = {
         'email': userEmail,
         'title': _titleController.text,
         'startDate': DateFormat('yyyy-MM-dd').format(_startDate),
         'endDate': DateFormat('yyyy-MM-dd').format(_endDate),
+        'startTime': startTimeString,
+        'endTime': endTimeString,
         'locationName': _locationName,
         'locationAddress': _locationAddress,
         'explanation': _explanationController.text,
       };
+      // ▲▲▲ [수정] startTime과 endTime을 문자열로 변환하여 추가 ▲▲▲
 
       final response = await http.post(
         url,

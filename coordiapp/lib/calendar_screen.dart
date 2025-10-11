@@ -1,3 +1,5 @@
+// 📂 lib/calendar_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -39,9 +41,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadInitialData() async {
-    // ▼▼▼ [수정] 서버에서 일정 데이터를 불러오도록 변경 ▼▼▼
     await _loadSchedulesFromServer();
-    // ▲▲▲ [수정] 서버에서 일정 데이터를 불러오도록 변경 ▲▲▲
     try {
       _currentPosition = await _getCurrentLocation();
     } catch (e) {
@@ -55,13 +55,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // --- ▼▼▼ [수정] 서버에서 스케줄 데이터를 불러오는 함수 ▼▼▼ ---
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();
     final userEmail = prefs.getString('userEmail');
 
     if (userEmail == null) {
-      // 이메일이 없으면 더 이상 진행하지 않음
       if (mounted) {
         setState(() {
           _allSchedules = [];
@@ -80,24 +78,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
         if (mounted) {
           setState(() {
             _allSchedules = List<Map<String, dynamic>>.from(data);
-            // 화면이 처음 로드될 때 오늘 날짜의 일정을 필터링
             _filterSchedules(_selectedDay ?? DateTime.now());
           });
         }
       } else {
-        // 오류 처리
         debugPrint('Failed to load schedules: ${response.body}');
       }
     } catch (e) {
       debugPrint('Error loading schedules: $e');
     }
   }
-  // --- ▲▲▲ [수정] 서버에서 스케줄 데이터를 불러오는 함수 ▲▲▲ ---
-
 
   void _filterSchedules(DateTime selectedDate) {
     _selectedDaySchedules = _allSchedules.where((schedule) {
-      // startDate 키가 null이 아니고 유효한 날짜 형식인지 확인
       if (schedule['startDate'] == null) return false;
       try {
         final startDate = DateTime.parse(schedule['startDate']);
@@ -107,7 +100,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     }).toList();
   }
-
 
   Future<void> _setDateString(DateTime date) async {
     _dateString = DateFormat('M. d. E', 'ko_KR').format(date);
@@ -133,7 +125,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // ... (날씨 관련 함수들은 기존과 동일하여 생략) ...
   Future<void> _fetchWeather(Position position, DateTime date) async {
     await Future.wait([
       _fetchCurrentWeather(position.latitude, position.longitude, date),
@@ -290,7 +281,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return {'x': x, 'y': y};
   }
 
-
   void _showScheduleDetails(Map<String, dynamic> schedule) {
     showDialog(
       context: context,
@@ -301,28 +291,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // --- ▼▼▼ [추가] 일정 추가 화면으로 이동하고, 돌아왔을 때 새로고침하는 함수 ▼▼▼ ---
   void _navigateAndRefresh() async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const ScheduleAddScreen()),
     );
 
-    // 일정 추가 화면에서 '저장'을 성공적으로 마치고 돌아왔을 때 (result == true)
-    // 서버에서 데이터를 다시 불러와 화면을 새로고침합니다.
     if (result == true) {
       setState(() {
-        _isLoading = true; // 로딩 시작
+        _isLoading = true;
       });
-      await _loadSchedulesFromServer(); // 서버에서 최신 데이터 다시 로드
+      await _loadSchedulesFromServer();
       setState(() {
-        _isLoading = false; // 로딩 종료
+        _isLoading = false;
       });
     }
   }
-  // --- ▲▲▲ [추가] 일정 추가 화면으로 이동하고, 돌아왔을 때 새로고침하는 함수 ▲▲▲ ---
 
-  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -350,28 +335,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-      // ▼▼▼ [수정] 원하시는 대로 레이아웃 재구성 ▼▼▼
           : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. 달력 (스크롤 X, 좌우 여백 16)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: _buildCalendar(),
           ),
-          const SizedBox(height: 3),
-
-          // 2. Schedule 헤더 (스크롤 X, 좌우 여백 16)
+          const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: _buildScheduleHeader(),
           ),
-          // const SizedBox(height: 8),
-
-          // 3. 스크롤이 필요한 나머지 카드 부분만 Expanded와 ListView로 처리
+          const SizedBox(height: 0),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 3, 16, 16),
               children: [
                 _buildCombinedScheduleCard(),
               ],
@@ -379,12 +358,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ],
       ),
-      // ▲▲▲ [수정] 원하시는 대로 레이아웃 재구성 ▲▲▲
     );
   }
 
   Widget _buildCalendar() {
-    // ... (기존과 동일) ...
     return TableCalendar(
       locale: 'ko_KR',
       firstDay: DateTime.utc(2020, 1, 1),
@@ -397,6 +374,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black),
         rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black),
       ),
+      // ▼▼▼ [수정] calendarStyle에 markerDecoration 속성 추가 ▼▼▼
       calendarStyle: const CalendarStyle(
         todayDecoration: BoxDecoration(
           color: Colors.grey,
@@ -406,10 +384,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
           color: Colors.red,
           shape: BoxShape.circle,
         ),
+        // 마커(점)의 스타일을 지정합니다.
+        markerDecoration: BoxDecoration(
+          color: Colors.lightBlue, // 이 부분을 원하는 색상으로 변경하세요. (예: Colors.blue)
+          shape: BoxShape.circle,
+        ),
       ),
+      // ▲▲▲ [수정] calendarStyle에 markerDecoration 속성 추가 ▲▲▲
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
       onDaySelected: _onDaySelected,
-      // ▼▼▼ [추가] 이벤트 마커 표시를 위한 설정 ▼▼▼
       eventLoader: (day) {
         return _allSchedules.where((schedule) {
           if (schedule['startDate'] == null) return false;
@@ -421,7 +404,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           }
         }).toList();
       },
-      // ▲▲▲ [추가] 이벤트 마커 표시를 위한 설정 ▲▲▲
     );
   }
 
@@ -433,18 +415,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
           "Schedule",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        // ▼▼▼ [수정] '+' 아이콘을 누르면 일정 추가 화면으로 이동 ▼▼▼
         IconButton(
           icon: const Icon(Icons.add, color: Colors.black),
           onPressed: _navigateAndRefresh,
         ),
-        // ▲▲▲ [수정] '+' 아이콘을 누르면 일정 추가 화면으로 이동 ▲▲▲
       ],
     );
   }
 
   Widget _buildCombinedScheduleCard() {
-    // ... (기존과 동일) ...
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -467,7 +446,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Column(
               children: [
                 _buildDateWeatherCard(),
-                const SizedBox(height: 3),
                 _buildLooksCard(),
               ],
             ),
@@ -480,7 +458,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDateWeatherCard() {
-    // ... (기존과 동일) ...
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -526,22 +503,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildLooksCard() {
-    // ... (기존과 동일) ...
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text('Looks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            // ▼▼▼ [수정] '+' 아이콘 버튼으로 변경 ▼▼▼
             IconButton(
                 onPressed: () { /* TODO: Looks 추가 기능 */},
                 icon: const Icon(Icons.add, size: 20)
             ),
-            // ▲▲▲ [수정] '+' 아이콘 버튼으로 변경 ▲▲▲
           ],
         ),
-        // const SizedBox(height: 0),
         Container(
           height: 170,
           decoration: BoxDecoration(
@@ -570,7 +543,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       itemCount: _selectedDaySchedules.length,
       itemBuilder: (context, index) {
         final schedule = _selectedDaySchedules[index];
-        // ▼▼▼ [수정] location_name 대신 location을 사용하도록 변경 ▼▼▼
         final location = schedule['location']?.toString() ?? '위치 정보 없음';
 
         return GestureDetector(
@@ -594,19 +566,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
       String location,
       ) {
     return Row(
-      // ▼▼▼ [수정] crossAxisAlignment를 center로 변경하여 세로 중앙 정렬 ▼▼▼
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // ▼▼▼ [수정] Container에 decoration을 사용하여 둥근 모서리 적용 ▼▼▼
         Container(
           width: 4,
-          height: 55, // 높이를 약간 줄여서 중앙에 더 잘 맞게 조정
+          height: 40,
           decoration: BoxDecoration(
-            color: color, // 색상은 여기서 지정
-            borderRadius: BorderRadius.circular(10), // 모서리를 둥글게
+            color: color,
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
-        // ▲▲▲ [수정] Container에 decoration을 사용하여 둥근 모서리 적용 ▲▲▲
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -631,12 +600,13 @@ class ScheduleDetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ▼▼▼ [수정] 서버에서 받아온 키 이름에 맞게 변경 ▼▼▼
+    // ▼▼▼ [수정] 서버에서 받아온 participants 키 사용 ▼▼▼
     final location = schedule['location']?.toString() ?? '정보 없음';
     final explanation = schedule['explanation']?.toString() ?? '설명 없음';
     final startDate = schedule['startDate']?.toString() ?? '';
     final endDate = schedule['endDate']?.toString() ?? '';
-    // ▲▲▲ [수정] 서버에서 받아온 키 이름에 맞게 변경 ▲▲▲
+    final participants = schedule['participants']?.toString() ?? '참가자 없음';
+    // ▲▲▲ [수정] 서버에서 받아온 participants 키 사용 ▲▲▲
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
@@ -679,9 +649,11 @@ class ScheduleDetailDialog extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               _buildDetailSection(title: '알림설정', content: '시작시간 알림\n10분 전 알림'),
-              _buildDetailSection(title: '참가자', content: 'ava9797@hs.ac.kr\nkdhok2285@hs.ac.kr'),
+              // ▼▼▼ [수정] 하드코딩된 이메일 대신 서버에서 받은 participants 데이터 표시 ▼▼▼
+              _buildDetailSection(title: '참가자', content: participants),
+              // ▲▲▲ [수정] 하드코딩된 이메일 대신 서버에서 받은 participants 데이터 표시 ▲▲▲
               _buildDetailSection(title: '위치', content: location),
-              _buildDetailSection(title: 'TPO', content: '정보 없음'), // category 정보가 없으므로 '정보 없음'으로 표시
+              _buildDetailSection(title: 'TPO', content: '정보 없음'),
               _buildDetailSection(title: '날씨', content: '날씨 정보 불러오는 중...'),
               _buildDetailSection(title: '설명', content: explanation),
             ],
@@ -692,7 +664,6 @@ class ScheduleDetailDialog extends StatelessWidget {
   }
 
   Widget _buildDetailSection({required String title, required String content}) {
-    // ... (기존과 동일) ...
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Column(

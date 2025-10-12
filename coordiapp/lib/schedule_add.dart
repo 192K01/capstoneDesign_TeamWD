@@ -8,6 +8,15 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'location_search_screen.dart';
 
+// 알림 옵션을 관리하기 위한 간단한 클래스
+class AlarmOption {
+  final String displayText; // 화면에 보여줄 텍스트 (예: '10분 전')
+  final String unit;        // 서버에 보낼 단위 (예: 'minutes')
+  final int value;          // 서버에 보낼 값 (예: 10)
+
+  AlarmOption({required this.displayText, required this.unit, required this.value});
+}
+
 class ScheduleAddScreen extends StatefulWidget {
   const ScheduleAddScreen({super.key});
 
@@ -20,9 +29,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   final TextEditingController _explanationController = TextEditingController();
   bool _isLoading = false;
 
-  // ▼▼▼ [수정] 참가자 관리 방식 변경 (TextController -> List) ▼▼▼
   List<String> _participants = [];
-  // ▲▲▲ [수정] 참가자 관리 방식 변경 (TextController -> List) ▲▲▲
 
   bool _isAllDay = false;
   DateTime _startDate = DateTime.now();
@@ -33,7 +40,25 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   String _locationName = '위치';
   String _locationAddress = '도로명주소';
 
-  // --- 일정 저장 함수 ---
+  // --- ▼▼▼ [추가] 알림 설정 관련 상태 변수 ▼▼▼ ---
+  final List<AlarmOption> _alarmOptions = [
+    AlarmOption(displayText: '알림 없음', unit: 'none', value: 0),
+    AlarmOption(displayText: '정시', unit: 'minutes', value: 0),
+    AlarmOption(displayText: '5분 전', unit: 'minutes', value: 5),
+    AlarmOption(displayText: '10분 전', unit: 'minutes', value: 10),
+    AlarmOption(displayText: '30분 전', unit: 'minutes', value: 30),
+    AlarmOption(displayText: '1시간 전', unit: 'hours', value: 1),
+    AlarmOption(displayText: '하루 전', unit: 'days', value: 1),
+  ];
+  late AlarmOption _selectedAlarmOption;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedAlarmOption = _alarmOptions[0]; // 기본값 '알림 없음'
+  }
+  // --- ▲▲▲ [추가] 알림 설정 관련 상태 변수 ▲▲▲ ---
+
   Future<void> _saveSchedule() async {
     if (_titleController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,9 +96,11 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
         'locationName': _locationName,
         'locationAddress': _locationAddress,
         'explanation': _explanationController.text,
-        // ▼▼▼ [수정] List를 콤마로 구분된 문자열로 변환하여 전송 ▼▼▼
         'participants': _participants.join(','),
-        // ▲▲▲ [수정] List를 콤마로 구분된 문자열로 변환하여 전송 ▲▲▲
+        // --- ▼▼▼ [추가] 알림 설정 값 전송 ▼▼▼ ---
+        'alarmUnit': _selectedAlarmOption.unit,
+        'alarmValue': _selectedAlarmOption.value,
+        // --- ▲▲▲ [추가] 알림 설정 값 전송 ▲▲▲ ---
       };
 
       final response = await http.post(
@@ -108,7 +135,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     }
   }
 
-  // --- ▼▼▼ [추가] 참가자 추가 팝업을 띄우는 함수 ▼▼▼ ---
   Future<void> _showAddParticipantDialog() async {
     final TextEditingController emailController = TextEditingController();
     return showDialog<void>(
@@ -133,7 +159,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               child: const Text('추가'),
               onPressed: () {
                 final String email = emailController.text.trim();
-                // 이메일이 비어있지 않고, 중복되지 않았을 경우에만 추가
                 if (email.isNotEmpty && !_participants.contains(email)) {
                   setState(() {
                     _participants.add(email);
@@ -147,7 +172,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       },
     );
   }
-  // --- ▲▲▲ [추가] 참가자 추가 팝업을 띄우는 함수 ▲▲▲ ---
 
   @override
   void dispose() {
@@ -156,7 +180,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     super.dispose();
   }
 
-  // ... (날짜/시간/위치 선택 관련 함수들은 기존과 동일하여 생략) ...
   Future<void> _selectDate(BuildContext context, bool isStartDate) async {
     final DateTime? picked = await showDatePicker(context: context, initialDate: isStartDate ? _startDate : _endDate, firstDate: DateTime(2020), lastDate: DateTime(2030));
     if (picked != null && picked != (isStartDate ? _startDate : _endDate)) {
@@ -170,6 +193,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       });
     }
   }
+
   void _showTimePicker(BuildContext context, bool isStartTime) {
     final initialDateTime = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, isStartTime ? _startTime.hour : _endTime.hour, isStartTime ? _startTime.minute : _endTime.minute);
     showModalBottomSheet(context: context, builder: (BuildContext builder) {
@@ -187,6 +211,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       ]));
     });
   }
+
   Future<void> _navigateToLocationSearch() async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => const LocationSearchScreen()));
     if (result != null && result is Map) {
@@ -197,6 +222,47 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     }
   }
 
+  // --- ▼▼▼ [추가] 알림 옵션 선택 팝업 ▼▼▼ ---
+  void _showAlarmOptions() {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext context) => Container(
+        height: 250,
+        color: CupertinoColors.systemBackground.resolveFrom(context),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Expanded(
+                child: CupertinoPicker(
+                  magnification: 1.22,
+                  squeeze: 1.2,
+                  useMagnifier: true,
+                  itemExtent: 32.0,
+                  scrollController: FixedExtentScrollController(
+                    initialItem: _alarmOptions.indexOf(_selectedAlarmOption),
+                  ),
+                  onSelectedItemChanged: (int selectedItem) {
+                    setState(() {
+                      _selectedAlarmOption = _alarmOptions[selectedItem];
+                    });
+                  },
+                  children: List<Widget>.generate(_alarmOptions.length, (int index) {
+                    return Center(child: Text(_alarmOptions[index].displayText));
+                  }),
+                ),
+              ),
+              CupertinoButton(
+                child: const Text('확인'),
+                onPressed: () => Navigator.pop(context),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  // --- ▲▲▲ [추가] 알림 옵션 선택 팝업 ▲▲▲ ---
 
   @override
   Widget build(BuildContext context) {
@@ -232,11 +298,14 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
             child: _buildOptionTile(icon: Icons.location_on_outlined, title: _locationName, subtitle: _locationAddress),
           ),
           const SizedBox(height: 16),
-          // ▼▼▼ [수정] 참가자 입력 UI를 새로운 위젯으로 교체 ▼▼▼
           _buildParticipantsSection(),
-          // ▲▲▲ [수정] 참가자 입력 UI를 새로운 위젯으로 교체 ▲▲▲
           const SizedBox(height: 16),
-          _buildOptionTile(icon: Icons.notifications_none, title: '알림설정', value: '알림 없음'),
+          // --- ▼▼▼ [수정] 알림 설정 UI 변경 ▼▼▼ ---
+          GestureDetector(
+            onTap: _showAlarmOptions,
+            child: _buildOptionTile(icon: Icons.notifications_none, title: '알림설정', value: _selectedAlarmOption.displayText),
+          ),
+          // --- ▲▲▲ [수정] 알림 설정 UI 변경 ▲▲▲ ---
           const SizedBox(height: 16),
           _buildDescriptionInput(),
         ],
@@ -260,7 +329,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   }
 
   Widget _buildDateTimeSection() {
-    // ... (기존과 동일) ...
     final DateFormat formatter = DateFormat('M월 d일 EEEE', 'ko_KR');
     String formatTimeOfDay(TimeOfDay tod) {
       final hour = tod.hour.toString().padLeft(2, '0');
@@ -298,7 +366,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   }
 
   Widget _buildOptionTile({required IconData icon, required String title, String? subtitle, String? value}) {
-    // ... (기존과 동일) ...
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(12)),
@@ -322,8 +389,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       ]),
     );
   }
-
-// --- ▼▼▼ [수정] '참가자 없음' 텍스트 위치를 도로명주소처럼 변경 ▼▼▼ ---
   Widget _buildParticipantsSection() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
@@ -335,7 +400,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. 상단: '참가자' 타이틀과 '+' 추가 버튼 (항상 보임)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -352,19 +416,14 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               ),
             ],
           ),
-
-          // 2. 하단: 참가자 목록 상태에 따라 다른 위젯 표시
           _participants.isEmpty
-          // 2-1. 참가자가 없을 경우: '참가자 없음' 텍스트 표시
               ? Padding(
-            // 아이콘과 타이틀 너비만큼 왼쪽 여백을 줘서 들여쓰기 효과
             padding: const EdgeInsets.only(top: 4.0, left: 36.0),
             child: Text(
               '참가자 없음',
               style: TextStyle(color: Colors.grey[700], fontSize: 14),
             ),
           )
-          // 2-2. 참가자가 있을 경우: 이메일 Chip 목록 표시
               : Padding(
             padding: const EdgeInsets.only(top: 8.0),
             child: Wrap(
@@ -387,7 +446,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       ),
     );
   }
-  // --- ▲▲▲ [수정] '참가자 없음' 텍스트 위치를 도로명주소처럼 변경 ▲▲▲ ---
 
   Widget _buildDescriptionInput() {
     return Container(

@@ -14,10 +14,10 @@ class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
   @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
+  CalendarScreenState createState() => CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   List<Map<String, dynamic>> _allSchedules = [];
@@ -39,6 +39,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _selectedDay = _focusedDay;
     _loadInitialData();
   }
+
+  Future<void> refreshData() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+    await _loadSchedulesFromServer();
+    if (mounted) {
+      await _onDaySelected(_selectedDay ?? DateTime.now(), _focusedDay);
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
 
   Future<void> _loadInitialData() async {
     await _loadSchedulesFromServer();
@@ -91,15 +107,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _filterSchedules(DateTime selectedDate) {
     _selectedDaySchedules = _allSchedules.where((schedule) {
-      if (schedule['startDate'] == null) return false;
+      if (schedule['startDate'] == null || schedule['endDate'] == null) {
+        return false;
+      }
       try {
         final startDate = DateTime.parse(schedule['startDate']);
-        return isSameDay(startDate, selectedDate);
+        final endDate = DateTime.parse(schedule['endDate']);
+
+        final normalizedSelectedDate =
+        DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+        final normalizedStartDate =
+        DateTime(startDate.year, startDate.month, startDate.day);
+        final normalizedEndDate =
+        DateTime(endDate.year, endDate.month, endDate.day);
+
+        return (normalizedSelectedDate.isAtSameMomentAs(normalizedStartDate) ||
+            normalizedSelectedDate.isAfter(normalizedStartDate)) &&
+            (normalizedSelectedDate.isAtSameMomentAs(normalizedEndDate) ||
+                normalizedSelectedDate.isBefore(normalizedEndDate));
       } catch (e) {
         return false;
       }
     }).toList();
   }
+
 
   Future<void> _setDateString(DateTime date) async {
     _dateString = DateFormat('M. d. E', 'ko_KR').format(date);
@@ -298,13 +329,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
 
     if (result == true) {
-      setState(() {
-        _isLoading = true;
-      });
-      await _loadSchedulesFromServer();
-      setState(() {
-        _isLoading = false;
-      });
+      refreshData();
     }
   }
 
@@ -374,7 +399,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black),
         rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black),
       ),
-      // ▼▼▼ [수정] calendarStyle에 markerDecoration 속성 추가 ▼▼▼
       calendarStyle: const CalendarStyle(
         todayDecoration: BoxDecoration(
           color: Colors.grey,
@@ -384,22 +408,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
           color: Colors.red,
           shape: BoxShape.circle,
         ),
-        // 마커(점)의 스타일을 지정합니다.
         markerDecoration: BoxDecoration(
-          color: Colors.lightBlue, // 이 부분을 원하는 색상으로 변경하세요. (예: Colors.blue)
+          color: Colors.lightBlue,
           shape: BoxShape.circle,
         ),
       ),
-      // ▲▲▲ [수정] calendarStyle에 markerDecoration 속성 추가 ▲▲▲
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
       onDaySelected: _onDaySelected,
       eventLoader: (day) {
         return _allSchedules.where((schedule) {
-          if (schedule['startDate'] == null) return false;
+          if (schedule['startDate'] == null || schedule['endDate'] == null) {
+            return false;
+          }
           try {
             final startDate = DateTime.parse(schedule['startDate']);
-            return isSameDay(startDate, day);
-          } catch(e) {
+            final endDate = DateTime.parse(schedule['endDate']);
+
+            final normalizedDay = DateTime.utc(day.year, day.month, day.day);
+            final normalizedStartDate =
+            DateTime.utc(startDate.year, startDate.month, startDate.day);
+            final normalizedEndDate =
+            DateTime.utc(endDate.year, endDate.month, endDate.day);
+
+            return (normalizedDay.isAtSameMomentAs(normalizedStartDate) ||
+                normalizedDay.isAfter(normalizedStartDate)) &&
+                (normalizedDay.isAtSameMomentAs(normalizedEndDate) ||
+                    normalizedDay.isBefore(normalizedEndDate));
+          } catch (e) {
             return false;
           }
         }).toList();
@@ -543,14 +578,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
       itemCount: _selectedDaySchedules.length,
       itemBuilder: (context, index) {
         final schedule = _selectedDaySchedules[index];
-        final location = schedule['location']?.toString() ?? '위치 정보 없음';
+        final location = schedule['locationName']?.toString() ?? '위치 정보 없음';
+        final startTime = schedule['startTime']?.toString() ?? '';
+        final endTime = schedule['endTime']?.toString() ?? '';
+        final startDateStr = schedule['startDate']?.toString() ?? '';
+        final endDateStr = schedule['endDate']?.toString() ?? '';
+
+        String dateTimeString;
+
+        try {
+          final selectedDate = _selectedDay!;
+          final startDate = DateTime.parse(startDateStr);
+          final endDate = DateTime.parse(endDateStr);
+
+          final isAllDay = (startTime == '00:00' && endTime == '23:59');
+          final isSingleDay = isSameDay(startDate, endDate);
+          final isFirstDay = isSameDay(selectedDate, startDate);
+          final isLastDay = isSameDay(selectedDate, endDate);
+
+          final formattedDate = DateFormat('yy.MM.dd').format(selectedDate);
+
+          if (isSingleDay) {
+            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime - $endTime';
+          } else { // Multi-day event
+            if (isFirstDay) {
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime 부터';
+            } else if (isLastDay) {
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $endTime 까지';
+            } else { // In-between day
+              dateTimeString = '$formattedDate, 하루종일';
+            }
+          }
+        } catch (e) {
+          dateTimeString = '시간 정보 없음';
+        }
 
         return GestureDetector(
           onTap: () => _showScheduleDetails(schedule),
           child: _buildScheduleItem(
             Colors.lightBlue,
             schedule['title'].toString(),
-            schedule['startDate'].toString(),
+            dateTimeString,
             location,
           ),
         );
@@ -562,7 +630,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _buildScheduleItem(
       Color color,
       String title,
-      String date,
+      String dateTimeInfo,
       String location,
       ) {
     return Row(
@@ -570,7 +638,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       children: [
         Container(
           width: 4,
-          height: 40,
+          height: 50,
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(10),
@@ -580,10 +648,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
-              Text(date, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+              Text(dateTimeInfo, style: const TextStyle(color: Colors.black54, fontSize: 12)),
               const SizedBox(height: 4),
               Text(location, style: const TextStyle(color: Colors.black54, fontSize: 12)),
             ],
@@ -594,19 +663,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
+// --- ▼▼▼ [수정] 알림 정보 표시 로직 추가 ▼▼▼ ---
 class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;
   const ScheduleDetailDialog({super.key, required this.schedule});
 
+  String _getAlarmText(String? unit, int? value) {
+    if (unit == null || value == null || unit == 'none') {
+      return '알림 없음';
+    }
+    switch (unit) {
+      case 'minutes':
+        return value == 0 ? '정시' : '$value분 전';
+      case 'hours':
+        return '$value시간 전';
+      case 'days':
+        return '$value일 전';
+      default:
+        return '알림 없음';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ▼▼▼ [수정] 서버에서 받아온 participants 키 사용 ▼▼▼
-    final location = schedule['location']?.toString() ?? '정보 없음';
+    final location = schedule['locationName']?.toString() ?? '정보 없음';
     final explanation = schedule['explanation']?.toString() ?? '설명 없음';
     final startDate = schedule['startDate']?.toString() ?? '';
     final endDate = schedule['endDate']?.toString() ?? '';
     final participants = schedule['participants']?.toString() ?? '참가자 없음';
-    // ▲▲▲ [수정] 서버에서 받아온 participants 키 사용 ▲▲▲
+
+    // 알림 정보 가져오기
+    final alarmUnit = schedule['alarmUnit'] as String?;
+    final alarmValue = schedule['alarmValue'] as int?;
+    final alarmText = _getAlarmText(alarmUnit, alarmValue);
+
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
@@ -648,10 +738,8 @@ class ScheduleDetailDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 20),
-              _buildDetailSection(title: '알림설정', content: '시작시간 알림\n10분 전 알림'),
-              // ▼▼▼ [수정] 하드코딩된 이메일 대신 서버에서 받은 participants 데이터 표시 ▼▼▼
+              _buildDetailSection(title: '알림설정', content: alarmText), // 수정된 알림 텍스트 표시
               _buildDetailSection(title: '참가자', content: participants),
-              // ▲▲▲ [수정] 하드코딩된 이메일 대신 서버에서 받은 participants 데이터 표시 ▲▲▲
               _buildDetailSection(title: '위치', content: location),
               _buildDetailSection(title: 'TPO', content: '정보 없음'),
               _buildDetailSection(title: '날씨', content: '날씨 정보 불러오는 중...'),
@@ -679,3 +767,4 @@ class ScheduleDetailDialog extends StatelessWidget {
     );
   }
 }
+// --- ▲▲▲ [수정] 알림 정보 표시 로직 추가 ▲▲▲ ---

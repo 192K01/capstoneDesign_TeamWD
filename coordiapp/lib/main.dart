@@ -1,3 +1,5 @@
+// 📂 lib/main.dart
+
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -15,17 +17,14 @@ import 'camera.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 
-import 'calendar_screen.dart'; // 이 파일이 없다면 제거해야 합니다.
+import 'calendar_screen.dart';
 import 'profile_screen.dart';
 import 'schedule_add.dart';
-import 'search_screen.dart'; // ▼▼▼ [수정] 폴더 경로 없이 바로 import ▼▼▼
+import 'search_screen.dart';
 
 void main() async {
-  // main 함수 시작 전에 Flutter 엔진과 위젯 바인딩을 초기화합니다.
   WidgetsFlutterBinding.ensureInitialized();
-  // SharedPreferences를 사용하여 로그인 상태를 확인합니다.
   final prefs = await SharedPreferences.getInstance();
-  // 'isLoggedIn' 키의 값을 읽어옵니다. 값이 없으면 false를 기본값으로 사용합니다.
   final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
 
   await initializeDateFormatting();
@@ -34,7 +33,6 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  // isLoggedIn 변수를 받도록 생성자를 수정합니다.
   final bool isLoggedIn;
   const MyApp({super.key, required this.isLoggedIn});
 
@@ -42,9 +40,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // 로그인 상태에 따라 첫 화면을 결정합니다.
-      // isLoggedIn이 true이면 MainScreen을, false이면 LoginScreen을 보여줍니다.
-      home: const LoginScreen(),
+      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
     );
   }
 }
@@ -60,38 +56,46 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isMenuOpen = false;
 
+  // --- ▼▼▼ [추가] 각 화면의 상태를 제어하기 위한 GlobalKey 추가 ▼▼▼ ---
   final GlobalKey<ProfileScreenState> _profileScreenKey =
-      GlobalKey<ProfileScreenState>();
+  GlobalKey<ProfileScreenState>();
+  final GlobalKey<CalendarScreenState> _calendarScreenKey =
+  GlobalKey<CalendarScreenState>();
+  // --- ▲▲▲ [추가] 각 화면의 상태를 제어하기 위한 GlobalKey 추가 ▲▲▲ ---
 
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    // --- ▼▼▼ [수정] 화면 목록에 GlobalKey 할당 ▼▼▼ ---
     _pages = <Widget>[
       const HomeScreen(),
       const SearchScreen(),
-      const CalendarScreen(),
-      ProfileScreen(key: _profileScreenKey), // ProfileScreen에 key 전달
+      CalendarScreen(key: _calendarScreenKey), // CalendarScreen에 key 전달
+      ProfileScreen(key: _profileScreenKey),   // ProfileScreen에 key 전달
     ];
+    // --- ▲▲▲ [수정] 화면 목록에 GlobalKey 할당 ▲▲▲ ---
   }
 
   void _onItemTapped(int index) {
+    // '추가' 버튼(인덱스 2)을 누르면 팝업 메뉴가 열리도록 수정
     if (index == 2) {
       setState(() => _isMenuOpen = !_isMenuOpen);
     } else {
+      // '추가' 버튼 이후의 인덱스는 1씩 빼서 페이지 인덱스와 맞춥니다.
       int pageIndex = index > 2 ? index - 1 : index;
       setState(() {
         _selectedIndex = pageIndex;
         if (_isMenuOpen) _isMenuOpen = false;
       });
+      // 프로필 탭으로 이동 시 데이터 새로고침
       if (pageIndex == 3) {
         _profileScreenKey.currentState?.performSearch();
       }
     }
   }
 
-  // ... 이하 _addClothingItem, build, _buildPopupMenu 등 나머지 코드는 이전과 동일합니다 ...
   Future<void> _addClothingItem() async {
     if (_isMenuOpen) setState(() => _isMenuOpen = false);
     await Future.delayed(const Duration(milliseconds: 300));
@@ -143,13 +147,9 @@ class _MainScreenState extends State<MainScreen> {
           ),
         );
         if (result == true) {
-          // 1. ProfileScreen을 새로고침합니다.
           _profileScreenKey.currentState?.performSearch();
-          // 2. Profile 탭으로 자동 이동합니다.
           setState(() {
-            // BottomNavigationBar 아이템 순서: Home(0), Search(1), Add(2), Calendar(3), Profile(4)
-            // 실제 페이지 인덱스: Home(0), Search(1), Calendar(2), Profile(3)
-            _selectedIndex = 3; // ProfileScreen의 페이지 인덱스는 3입니다.
+            _selectedIndex = 3; // 프로필 화면 인덱스
           });
         }
       }
@@ -168,6 +168,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 페이지 인덱스를 BottomNavigationBar 인덱스로 변환
     int navIndex = _selectedIndex >= 2 ? _selectedIndex + 1 : _selectedIndex;
 
     return Stack(
@@ -233,22 +234,30 @@ class _MainScreenState extends State<MainScreen> {
                 onTap: () {},
               ),
               const SizedBox(height: 16),
-
+              // --- ▼▼▼ [수정] 일정 추가 후 캘린더 새로고침 로직 추가 ▼▼▼ ---
               _buildMenuItem(
                 icon: Icons.calendar_today,
                 label: '일정 추가하기',
-                onTap: () {
-                  // 메뉴를 닫고 새 화면으로 이동합니다.
+                onTap: () async {
                   if (_isMenuOpen) setState(() => _isMenuOpen = false);
-                  Navigator.push(
+                  // 일정 추가 화면이 닫힐 때 결과를 받기 위해 await 사용
+                  final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const ScheduleAddScreen(),
                     ),
                   );
+                  // 결과가 true (성공적으로 추가됨)이면 캘린더 화면 새로고침
+                  if (result == true) {
+                    _calendarScreenKey.currentState?.refreshData();
+                    // 캘린더 탭으로 바로 이동
+                    setState(() {
+                      _selectedIndex = 2; // CalendarScreen의 페이지 인덱스
+                    });
+                  }
                 },
               ),
-
+              // --- ▲▲▲ [수정] 일정 추가 후 캘린더 새로고침 로직 추가 ▲▲▲ ---
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
                 child: FloatingActionButton(
@@ -296,6 +305,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
+// HomeScreen, TodayInfoCard, RecommendationSection, ClothingItem 클래스는 변경사항이 없습니다.
+// ... (기존 코드와 동일) ...
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
   @override
@@ -407,7 +418,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst'
-        '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
+            '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
 
       final response = await http.get(url);
@@ -458,7 +469,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
 
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-        '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+            '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
       );
 
       final response = await http.get(url);
@@ -603,129 +614,123 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Column(
               children: [
-                // 왼쪽 날짜/날씨 섹션
                 Expanded(
                   flex: 2,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text(
-                              _dateString,
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // 날씨 섹션
-                      Expanded(
-                        flex: 3,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          // ▼▼▼ 요청하신 디자인으로 UI 구조 변경 ▼▼▼
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // 1. 상단: 현재 날씨 정보 (아이콘, 온도, 상태)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _skyIcon,
-                                    size: 50,
-                                    color: Colors.grey[800],
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _currentTemp,
-                                        style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        _skyCondition,
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          color: Colors.grey[800],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              // 2. 하단: 최저/최고 온도 정보 (가운데 정렬)
-                              if (_minTemp != null && _maxTemp != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6.0),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center, // 가운데 정렬
-                                    children: [
-                                      Text(
-                                        _minTemp!,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.blue,
-                                        ),
-                                      ),
-                                      Text(
-                                        ' / ',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                      Text(
-                                        _maxTemp!,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.red,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // 일정 정보 섹션 (수정 없음)
-                Expanded(
-                  flex: 3,
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.grey[200],
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Center(child: Text('일정 정보')),
+                    child: Center(
+                      child: Text(
+                        _dateString,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _skyIcon,
+                              size: 50,
+                              color: Colors.grey[800],
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentTemp,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  _skyCondition,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        if (_minTemp != null && _maxTemp != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6.0),
+                            child: Row(
+                              mainAxisAlignment:
+                              MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _minTemp!,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                Text(
+                                  ' / ',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                Text(
+                                  _maxTemp!,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 3,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(child: Text('일정 정보')),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

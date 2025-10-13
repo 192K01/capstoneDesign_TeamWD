@@ -40,7 +40,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   String _locationName = '위치';
   String _locationAddress = '도로명주소';
 
-  // --- ▼▼▼ [추가] 알림 설정 관련 상태 변수 ▼▼▼ ---
   final List<AlarmOption> _alarmOptions = [
     AlarmOption(displayText: '알림 없음', unit: 'none', value: 0),
     AlarmOption(displayText: '정시', unit: 'minutes', value: 0),
@@ -52,12 +51,25 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
   ];
   late AlarmOption _selectedAlarmOption;
 
+  // --- ▼▼▼ [수정] 'TPO 설정 없음' 옵션 추가 ▼▼▼ ---
+  final Map<String, List<String>> _tpoData = {
+    'TPO': [],
+    '일상 & 캐주얼': ['친구와의 약속', '학교/캠퍼스 생활'],
+    '비즈니스 & 포멀': ['출근/오피스', '비즈니스 미팅', '면접', '결혼식 하객'],
+    '특별한 날 & 데이트': ['데이트', '파티/행사', '레스토랑', '전시회/공연 관람'],
+    '활동적인 날': ['운동/액티비티', '나들이'],
+  };
+  String? _selectedTpo1;
+  String? _selectedTpo2;
+  // --- ▲▲▲ [수정] 'TPO 설정 없음' 옵션 추가 ▲▲▲ ---
+
+
   @override
   void initState() {
     super.initState();
-    _selectedAlarmOption = _alarmOptions[0]; // 기본값 '알림 없음'
+    _selectedAlarmOption = _alarmOptions[0];
+    _selectedTpo1 = _tpoData.keys.first; // 기본값을 'TPO 설정 없음'으로 설정
   }
-  // --- ▲▲▲ [추가] 알림 설정 관련 상태 변수 ▲▲▲ ---
 
   Future<void> _saveSchedule() async {
     if (_titleController.text.isEmpty) {
@@ -93,14 +105,16 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
         'endDate': DateFormat('yyyy-MM-dd').format(_endDate),
         'startTime': startTimeString,
         'endTime': endTimeString,
-        'locationName': _locationName,
-        'locationAddress': _locationAddress,
+        'locationName': _locationName == '위치' ? null : _locationName,
+        'locationAddress': _locationAddress == '도로명주소' ? null : _locationAddress,
         'explanation': _explanationController.text,
         'participants': _participants.join(','),
-        // --- ▼▼▼ [추가] 알림 설정 값 전송 ▼▼▼ ---
         'alarmUnit': _selectedAlarmOption.unit,
         'alarmValue': _selectedAlarmOption.value,
-        // --- ▲▲▲ [추가] 알림 설정 값 전송 ▲▲▲ ---
+        // --- ▼▼▼ [수정] TPO 설정 없음을 null로 처리하여 전송 ▼▼▼ ---
+        'tpo1': _selectedTpo1 == 'TPO' ? null : _selectedTpo1,
+        'tpo2': _selectedTpo1 == 'TPO' ? null : _selectedTpo2,
+        // --- ▲▲▲ [수정] TPO 설정 없음을 null로 처리하여 전송 ▲▲▲ ---
       };
 
       final response = await http.post(
@@ -222,7 +236,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     }
   }
 
-  // --- ▼▼▼ [추가] 알림 옵션 선택 팝업 ▼▼▼ ---
   void _showAlarmOptions() {
     showCupertinoModalPopup<void>(
       context: context,
@@ -262,7 +275,88 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
       ),
     );
   }
-  // --- ▲▲▲ [추가] 알림 옵션 선택 팝업 ▲▲▲ ---
+
+  void _showTpoPicker() {
+    int tpo1Index = _tpoData.keys.toList().indexOf(_selectedTpo1 ?? _tpoData.keys.first);
+
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (BuildContext context) {
+        List<String> currentTpo2Options = _tpoData[_tpoData.keys.elementAt(tpo1Index)]!;
+
+        return StatefulBuilder(
+          builder: (context, setPickerState) {
+            return Container(
+              height: 250,
+              color: CupertinoColors.systemBackground.resolveFrom(context),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: CupertinoPicker(
+                              magnification: 1.22,
+                              squeeze: 1.2,
+                              useMagnifier: true,
+                              itemExtent: 32.0,
+                              scrollController: FixedExtentScrollController(initialItem: tpo1Index),
+                              onSelectedItemChanged: (int selectedItem) {
+                                setPickerState(() {
+                                  tpo1Index = selectedItem;
+                                  _selectedTpo1 = _tpoData.keys.elementAt(tpo1Index);
+                                  currentTpo2Options = _tpoData[_selectedTpo1]!;
+                                  _selectedTpo2 = null;
+                                });
+                              },
+                              children: _tpoData.keys.map((key) => Center(child: Text(key))).toList(),
+                            ),
+                          ),
+                          Expanded(
+                            child: CupertinoPicker(
+                              key: ValueKey(_selectedTpo1),
+                              magnification: 1.22,
+                              squeeze: 1.2,
+                              useMagnifier: true,
+                              itemExtent: 32.0,
+                              onSelectedItemChanged: (int selectedItem) {
+                                setPickerState(() {
+                                  if (currentTpo2Options.isNotEmpty) {
+                                    _selectedTpo2 = currentTpo2Options[selectedItem];
+                                  }
+                                });
+                              },
+                              children: currentTpo2Options.map((value) => Center(child: Text(value))).toList(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    CupertinoButton(
+                      child: const Text('확인'),
+                      onPressed: () {
+                        setState(() {
+                          _selectedTpo1 = _tpoData.keys.elementAt(tpo1Index);
+                          if (_selectedTpo1 != 'TPO' && _selectedTpo2 == null) {
+                            _selectedTpo2 = _tpoData[_selectedTpo1]!.first;
+                          } else if (_selectedTpo1 == 'TPO') {
+                            _selectedTpo2 = null;
+                          }
+                        });
+                        Navigator.pop(context);
+                      },
+                    )
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -298,14 +392,23 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
             child: _buildOptionTile(icon: Icons.location_on_outlined, title: _locationName, subtitle: _locationAddress),
           ),
           const SizedBox(height: 16),
+          // --- ▼▼▼ [수정] TPO UI 표시 로직 변경 ▼▼▼ ---
+          GestureDetector(
+            onTap: _showTpoPicker,
+            child: _buildOptionTile(
+              icon: Icons.sell_outlined,
+              title: _selectedTpo1 ?? 'TPO',
+              subtitle: _selectedTpo1 == 'TPO' ? null : _selectedTpo2,
+            ),
+          ),
+          // --- ▲▲▲ [수정] TPO UI 표시 로직 변경 ▲▲▲ ---
+          const SizedBox(height: 16),
           _buildParticipantsSection(),
           const SizedBox(height: 16),
-          // --- ▼▼▼ [수정] 알림 설정 UI 변경 ▼▼▼ ---
           GestureDetector(
             onTap: _showAlarmOptions,
             child: _buildOptionTile(icon: Icons.notifications_none, title: '알림설정', value: _selectedAlarmOption.displayText),
           ),
-          // --- ▲▲▲ [수정] 알림 설정 UI 변경 ▲▲▲ ---
           const SizedBox(height: 16),
           _buildDescriptionInput(),
         ],
@@ -377,8 +480,8 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
             if (title == '기본일정') const Padding(padding: EdgeInsets.only(right: 8.0), child: Icon(Icons.circle, color: Colors.blue, size: 12)),
             Text(title, style: const TextStyle(fontSize: 16), overflow: TextOverflow.ellipsis),
           ]),
-          if (subtitle != null) Padding(
-            padding: EdgeInsets.only(left: title == '기본일정' ? 20 : 0),
+          if (subtitle != null && subtitle.isNotEmpty) Padding(
+            padding: const EdgeInsets.only(left: 0),
             child: Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 14), overflow: TextOverflow.ellipsis),
           )
         ])),

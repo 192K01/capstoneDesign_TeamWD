@@ -630,7 +630,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                       child: Text(
                         _dateString,
                         style: const TextStyle(
-                          fontSize: 26,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -654,7 +654,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                           children: [
                             Icon(
                               _skyIcon,
-                              size: 50,
+                              size: 45,
                               color: Colors.grey[800],
                             ),
                             const SizedBox(width: 10),
@@ -665,14 +665,14 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                                 Text(
                                   _currentTemp,
                                   style: const TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                                 Text(
                                   _skyCondition,
                                   style: TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 16,
                                     color: Colors.grey[800],
                                   ),
                                 ),

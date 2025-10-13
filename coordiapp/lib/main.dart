@@ -10,7 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'dart:io' show Platform;
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
-
+import 'splash_screen.dart';
 import 'camera.dart';
 
 //로그인 관련
@@ -40,7 +40,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
+      home: const SplashScreen(),
     );
   }
 }

@@ -914,7 +914,7 @@ class ScheduleDetailDialog extends StatelessWidget {
                 children: [
                   Icon(icon, size: 16, color: Colors.grey[700]),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis)),
+                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12))),
                 ],
               ),
             )).toList(),
@@ -938,9 +938,9 @@ class ScheduleDetailDialog extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
               if (subtitle != null && subtitle.isNotEmpty)
-                Text(subtitle, style: TextStyle(fontSize: 14, color: Colors.grey[700])),
+                Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             ],
           ),
         ],

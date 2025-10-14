@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'dart:io' show Platform;
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:table_calendar/table_calendar.dart';
 import 'splash_screen.dart';
 import 'camera.dart';
 
@@ -56,40 +57,39 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   bool _isMenuOpen = false;
 
-  // --- ▼▼▼ [추가] 각 화면의 상태를 제어하기 위한 GlobalKey 추가 ▼▼▼ ---
   final GlobalKey<ProfileScreenState> _profileScreenKey =
   GlobalKey<ProfileScreenState>();
   final GlobalKey<CalendarScreenState> _calendarScreenKey =
   GlobalKey<CalendarScreenState>();
-  // --- ▲▲▲ [추가] 각 화면의 상태를 제어하기 위한 GlobalKey 추가 ▲▲▲ ---
 
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
-    // --- ▼▼▼ [수정] 화면 목록에 GlobalKey 할당 ▼▼▼ ---
     _pages = <Widget>[
-      const HomeScreen(),
+      HomeScreen(onNavigateToCalendar: () => _navigateToCalendarTab()),
       const SearchScreen(),
-      CalendarScreen(key: _calendarScreenKey), // CalendarScreen에 key 전달
-      ProfileScreen(key: _profileScreenKey),   // ProfileScreen에 key 전달
+      CalendarScreen(key: _calendarScreenKey),
+      ProfileScreen(key: _profileScreenKey),
     ];
-    // --- ▲▲▲ [수정] 화면 목록에 GlobalKey 할당 ▲▲▲ ---
+  }
+
+  void _navigateToCalendarTab() {
+    setState(() {
+      _selectedIndex = 2;
+    });
   }
 
   void _onItemTapped(int index) {
-    // '추가' 버튼(인덱스 2)을 누르면 팝업 메뉴가 열리도록 수정
     if (index == 2) {
       setState(() => _isMenuOpen = !_isMenuOpen);
     } else {
-      // '추가' 버튼 이후의 인덱스는 1씩 빼서 페이지 인덱스와 맞춥니다.
       int pageIndex = index > 2 ? index - 1 : index;
       setState(() {
         _selectedIndex = pageIndex;
         if (_isMenuOpen) _isMenuOpen = false;
       });
-      // 프로필 탭으로 이동 시 데이터 새로고침
       if (pageIndex == 3) {
         _profileScreenKey.currentState?.performSearch();
       }
@@ -149,7 +149,7 @@ class _MainScreenState extends State<MainScreen> {
         if (result == true) {
           _profileScreenKey.currentState?.performSearch();
           setState(() {
-            _selectedIndex = 3; // 프로필 화면 인덱스
+            _selectedIndex = 3;
           });
         }
       }
@@ -168,7 +168,6 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 페이지 인덱스를 BottomNavigationBar 인덱스로 변환
     int navIndex = _selectedIndex >= 2 ? _selectedIndex + 1 : _selectedIndex;
 
     return Stack(
@@ -234,30 +233,25 @@ class _MainScreenState extends State<MainScreen> {
                 onTap: () {},
               ),
               const SizedBox(height: 16),
-              // --- ▼▼▼ [수정] 일정 추가 후 캘린더 새로고침 로직 추가 ▼▼▼ ---
               _buildMenuItem(
                 icon: Icons.calendar_today,
                 label: '일정 추가하기',
                 onTap: () async {
                   if (_isMenuOpen) setState(() => _isMenuOpen = false);
-                  // 일정 추가 화면이 닫힐 때 결과를 받기 위해 await 사용
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const ScheduleAddScreen(),
                     ),
                   );
-                  // 결과가 true (성공적으로 추가됨)이면 캘린더 화면 새로고침
                   if (result == true) {
                     _calendarScreenKey.currentState?.refreshData();
-                    // 캘린더 탭으로 바로 이동
                     setState(() {
-                      _selectedIndex = 2; // CalendarScreen의 페이지 인덱스
+                      _selectedIndex = 2;
                     });
                   }
                 },
               ),
-              // --- ▲▲▲ [수정] 일정 추가 후 캘린더 새로고침 로직 추가 ▲▲▲ ---
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
                 child: FloatingActionButton(
@@ -305,10 +299,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-// HomeScreen, TodayInfoCard, RecommendationSection, ClothingItem 클래스는 변경사항이 없습니다.
-// ... (기존 코드와 동일) ...
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final VoidCallback onNavigateToCalendar;
+  const HomeScreen({super.key, required this.onNavigateToCalendar});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -334,12 +328,12 @@ class HomeScreen extends StatelessWidget {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          children: const [
-            TodayInfoCard(),
-            SizedBox(height: 30),
-            RecommendationSection(title: '오늘의 추천'),
-            SizedBox(height: 30),
-            RecommendationSection(title: '내가 즐겨입는 룩'),
+          children: [
+            TodayInfoCard(onNavigateToCalendar: onNavigateToCalendar),
+            const SizedBox(height: 30),
+            const RecommendationSection(title: '오늘의 추천'),
+            const SizedBox(height: 30),
+            const RecommendationSection(title: '내가 즐겨입는 룩'),
           ],
         ),
       ),
@@ -348,7 +342,9 @@ class HomeScreen extends StatelessWidget {
 }
 
 class TodayInfoCard extends StatefulWidget {
-  const TodayInfoCard({super.key});
+  final VoidCallback onNavigateToCalendar;
+  const TodayInfoCard({super.key, required this.onNavigateToCalendar});
+
   @override
   State<TodayInfoCard> createState() => _TodayInfoCardState();
 }
@@ -362,6 +358,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
   String? _minMaxTemp;
   String? _minTemp;
   String? _maxTemp;
+  List<Map<String, dynamic>> _todaySchedules = [];
 
   @override
   void initState() {
@@ -369,14 +366,9 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
     _initializeAllData();
   }
 
-  void _setDateString() {
-    setState(() {
-      _dateString = DateFormat('M. d. E', 'ko_KR').format(DateTime.now());
-    });
-  }
-
   Future<void> _initializeAllData() async {
     _setDateString();
+    await _fetchTodaySchedules();
     try {
       final position = await _getCurrentLocation();
       await _fetchCurrentWeather(position.latitude, position.longitude);
@@ -386,6 +378,81 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _fetchTodaySchedules() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+    if (userEmail == null) return;
+
+    const serverIp = '3.36.66.130';
+    final url = Uri.parse('http://$serverIp:5000/schedule/$userEmail');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final List<dynamic> allSchedules =
+        jsonDecode(utf8.decode(response.bodyBytes));
+        final today = DateTime.now();
+
+        final todaySchedules = allSchedules.where((schedule) {
+          try {
+            final startDate = DateTime.parse(schedule['startDate']);
+            final endDate = DateTime.parse(schedule['endDate']);
+            final normalizedToday =
+            DateTime(today.year, today.month, today.day);
+            return (normalizedToday.isAtSameMomentAs(startDate) ||
+                normalizedToday.isAfter(startDate)) &&
+                (normalizedToday.isAtSameMomentAs(endDate) ||
+                    normalizedToday.isBefore(endDate));
+          } catch (e) {
+            return false;
+          }
+        }).toList();
+
+        todaySchedules.sort((a, b) {
+          int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
+            final startDate = DateTime.parse(schedule['startDate']);
+            final endDate = DateTime.parse(schedule['endDate']);
+            final selectedDay =
+            DateTime(selected.year, selected.month, selected.day);
+
+            final isTrueAllDay =
+                schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
+            final isFirstDay = isSameDay(startDate, selectedDay);
+            final isLastDay = isSameDay(endDate, selectedDay);
+            final isMultiDay = !isSameDay(startDate, endDate);
+
+            if (isTrueAllDay) return 1;
+            if (isMultiDay && !isFirstDay && !isLastDay) return 1;
+            if (isMultiDay && isLastDay) return 2;
+            return 3;
+          }
+
+          final typeA = getScheduleType(a, today);
+          final typeB = getScheduleType(b, today);
+          if (typeA != typeB) return typeA.compareTo(typeB);
+
+          final startTimeA = a['startTime'] ?? '00:00';
+          final startTimeB = b['startTime'] ?? '00:00';
+          return startTimeA.compareTo(startTimeB);
+        });
+
+        if (mounted) {
+          setState(() {
+            _todaySchedules = List<Map<String, dynamic>>.from(todaySchedules);
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("오늘 일정 로딩 중 오류 발생: $e");
+    }
+  }
+
+  void _setDateString() {
+    setState(() {
+      _dateString = DateFormat('M. d. E', 'ko_KR').format(DateTime.now());
+    });
   }
 
   Future<Position> _getCurrentLocation() async {
@@ -722,15 +789,123 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
           Expanded(
             flex: 3,
             child: Container(
+              padding: const EdgeInsets.symmetric(
+                  vertical: 8.0, horizontal: 12.0),
               decoration: BoxDecoration(
                 color: Colors.grey[200],
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Center(child: Text('일정 정보')),
+              child: _buildTodayScheduleSection(),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTodayScheduleSection() {
+    const int maxDisplayCount = 4;
+    final int remainingCount = _todaySchedules.length - maxDisplayCount;
+
+    if (_todaySchedules.isEmpty) {
+      return const Center(child: Text('오늘 일정이 없습니다.'));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ..._todaySchedules.take(maxDisplayCount).map((schedule) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2.0),
+            child: _buildScheduleItem(schedule),
+          );
+        }).toList(),
+        if (remainingCount > 0) ...[
+          const Spacer(),
+          GestureDetector(
+            onTap: widget.onNavigateToCalendar,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.add, size: 16, color: Colors.black54),
+                const SizedBox(width: 4),
+                Text(
+                  '$remainingCount개 일정 더보기',
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildScheduleItem(Map<String, dynamic> schedule) {
+    final String title = schedule['title'] ?? '제목 없음';
+    final String startTime = schedule['startTime'] ?? '';
+    final String endTime = schedule['endTime'] ?? '';
+    final isTrueAllDay = startTime == '00:00' && endTime == '23:59';
+
+    String timeText;
+    try {
+      final startDate = DateTime.parse(schedule['startDate']);
+      final endDate = DateTime.parse(schedule['endDate']);
+      final today = DateTime.now();
+      final selectedDay = DateTime(today.year, today.month, today.day);
+
+      final isFirstDay = isSameDay(startDate, selectedDay);
+      final isLastDay = isSameDay(endDate, selectedDay);
+      final isMultiDay = !isSameDay(startDate, endDate);
+
+      if (isTrueAllDay) {
+        final startDateFormat = DateFormat('M. d');
+        final endDateFormat = DateFormat('M. d');
+        timeText = '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
+      } else if (isMultiDay) {
+        if (isLastDay) {
+          timeText = '00:00 - $endTime';
+        } else if (isFirstDay) {
+          timeText = '$startTime 부터';
+        } else {
+          timeText = "하루종일";
+        }
+      } else {
+        timeText = '$startTime - $endTime';
+      }
+    } catch (e) {
+      timeText = "시간 정보 없음";
+    }
+
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 24,
+          decoration: BoxDecoration(
+            color: Colors.lightBlue,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style:
+                const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                timeText,
+                style: const TextStyle(color: Colors.grey, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -638,16 +638,17 @@ class CalendarScreenState extends State<CalendarScreen> {
           final isLastDay = isSameDay(selectedDate, endDate);
 
           final formattedDate = DateFormat('yy.MM.dd').format(selectedDate);
-
+          final formattedLastDate = DateFormat('yy.MM.dd').format(endDate);
           if (isSingleDay) {
-            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime - $endTime';
+            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - $endTime';
           } else {
             if (isFirstDay) {
-              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime 부터';
+              // dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - $formattedLastDate $endTime';
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - 계속';
             } else if (isLastDay) {
-              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $endTime 까지';
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '00:00 - $endTime';
             } else {
-              dateTimeString = '$formattedDate, 하루종일';
+              dateTimeString = '하루종일';
             }
           }
         } catch (e) {

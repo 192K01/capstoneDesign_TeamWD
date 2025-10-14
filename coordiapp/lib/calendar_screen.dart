@@ -1,3 +1,5 @@
+// 📂 lib/calendar_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -12,10 +14,10 @@ class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
   @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
+  CalendarScreenState createState() => CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
   List<Map<String, dynamic>> _allSchedules = [];
@@ -38,10 +40,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _loadInitialData();
   }
 
-  Future<void> _loadInitialData() async {
-    // ▼▼▼ [수정] 서버에서 일정 데이터를 불러오도록 변경 ▼▼▼
+  Future<void> refreshData() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     await _loadSchedulesFromServer();
-    // ▲▲▲ [수정] 서버에서 일정 데이터를 불러오도록 변경 ▲▲▲
+    if (mounted) {
+      await _onDaySelected(_selectedDay ?? DateTime.now(), _focusedDay);
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+
+  Future<void> _loadInitialData() async {
+    await _loadSchedulesFromServer();
     try {
       _currentPosition = await _getCurrentLocation();
     } catch (e) {
@@ -55,13 +71,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // --- ▼▼▼ [수정] 서버에서 스케줄 데이터를 불러오는 함수 ▼▼▼ ---
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();
     final userEmail = prefs.getString('userEmail');
 
     if (userEmail == null) {
-      // 이메일이 없으면 더 이상 진행하지 않음
       if (mounted) {
         setState(() {
           _allSchedules = [];
@@ -80,32 +94,81 @@ class _CalendarScreenState extends State<CalendarScreen> {
         if (mounted) {
           setState(() {
             _allSchedules = List<Map<String, dynamic>>.from(data);
-            // 화면이 처음 로드될 때 오늘 날짜의 일정을 필터링
             _filterSchedules(_selectedDay ?? DateTime.now());
           });
         }
       } else {
-        // 오류 처리
         debugPrint('Failed to load schedules: ${response.body}');
       }
     } catch (e) {
       debugPrint('Error loading schedules: $e');
     }
   }
-  // --- ▲▲▲ [수정] 서버에서 스케줄 데이터를 불러오는 함수 ▲▲▲ ---
-
 
   void _filterSchedules(DateTime selectedDate) {
+    // 1. 선택된 날짜에 해당하는 일정 필터링
     _selectedDaySchedules = _allSchedules.where((schedule) {
-      // startDate 키가 null이 아니고 유효한 날짜 형식인지 확인
-      if (schedule['startDate'] == null) return false;
+      if (schedule['startDate'] == null || schedule['endDate'] == null) {
+        return false;
+      }
       try {
         final startDate = DateTime.parse(schedule['startDate']);
-        return isSameDay(startDate, selectedDate);
+        final endDate = DateTime.parse(schedule['endDate']);
+
+        final normalizedSelectedDate =
+        DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+        final normalizedStartDate =
+        DateTime(startDate.year, startDate.month, startDate.day);
+        final normalizedEndDate =
+        DateTime(endDate.year, endDate.month, endDate.day);
+
+        return (normalizedSelectedDate.isAtSameMomentAs(normalizedStartDate) ||
+            normalizedSelectedDate.isAfter(normalizedStartDate)) &&
+            (normalizedSelectedDate.isAtSameMomentAs(normalizedEndDate) ||
+                normalizedSelectedDate.isBefore(normalizedEndDate));
       } catch (e) {
         return false;
       }
     }).toList();
+
+    // 2. 새로운 정렬 로직 적용
+    _selectedDaySchedules.sort((a, b) {
+      // 각 일정이 선택된 날짜(selectedDate)를 기준으로 어떤 유형인지 판단하는 함수
+      int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
+        final startDate = DateTime.parse(schedule['startDate']);
+        final endDate = DateTime.parse(schedule['endDate']);
+        final selectedDay = DateTime(selected.year, selected.month, selected.day);
+
+        final isTrueAllDay = schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
+        final isFirstDay = isSameDay(startDate, selectedDay);
+        final isLastDay = isSameDay(endDate, selectedDay);
+        final isMultiDay = !isSameDay(startDate, endDate);
+
+        if (isTrueAllDay) return 1; // 1: 진짜 하루종일 일정
+        if (isMultiDay && !isFirstDay && !isLastDay) return 1; // 1: 연속 일정의 중간 날짜
+        if (isMultiDay && isLastDay) return 2; // 2: 연속 일정의 마지막 날
+        return 3; // 3: 그 외 시간 지정 일정
+      }
+
+      final typeA = getScheduleType(a, selectedDate);
+      final typeB = getScheduleType(b, selectedDate);
+
+      // 유형에 따라 정렬 (1 -> 2 -> 3 순서)
+      if (typeA != typeB) {
+        return typeA.compareTo(typeB);
+      }
+
+      // 유형이 같다면 시작 시간으로 정렬
+      final startTimeA = a['startTime'] ?? '00:00';
+      final startTimeB = b['startTime'] ?? '00:00';
+      int compare = startTimeA.compareTo(startTimeB);
+      if (compare != 0) {
+        return compare;
+      }
+
+      // 시작 시간도 같으면 기존 순서 유지
+      return 0;
+    });
   }
 
 
@@ -133,7 +196,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // ... (날씨 관련 함수들은 기존과 동일하여 생략) ...
   Future<void> _fetchWeather(Position position, DateTime date) async {
     await Future.wait([
       _fetchCurrentWeather(position.latitude, position.longitude, date),
@@ -290,39 +352,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return {'x': x, 'y': y};
   }
 
-
   void _showScheduleDetails(Map<String, dynamic> schedule) {
     showDialog(
       context: context,
       barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.5),
       builder: (BuildContext context) {
         return ScheduleDetailDialog(schedule: schedule);
       },
     );
   }
 
-  // --- ▼▼▼ [추가] 일정 추가 화면으로 이동하고, 돌아왔을 때 새로고침하는 함수 ▼▼▼ ---
   void _navigateAndRefresh() async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const ScheduleAddScreen()),
     );
 
-    // 일정 추가 화면에서 '저장'을 성공적으로 마치고 돌아왔을 때 (result == true)
-    // 서버에서 데이터를 다시 불러와 화면을 새로고침합니다.
     if (result == true) {
-      setState(() {
-        _isLoading = true; // 로딩 시작
-      });
-      await _loadSchedulesFromServer(); // 서버에서 최신 데이터 다시 로드
-      setState(() {
-        _isLoading = false; // 로딩 종료
-      });
+      refreshData();
     }
   }
-  // --- ▲▲▲ [추가] 일정 추가 화면으로 이동하고, 돌아왔을 때 새로고침하는 함수 ▲▲▲ ---
 
-  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -350,28 +401,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-      // ▼▼▼ [수정] 원하시는 대로 레이아웃 재구성 ▼▼▼
           : Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. 달력 (스크롤 X, 좌우 여백 16)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: _buildCalendar(),
           ),
-          const SizedBox(height: 3),
-
-          // 2. Schedule 헤더 (스크롤 X, 좌우 여백 16)
+          const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: _buildScheduleHeader(),
           ),
-          // const SizedBox(height: 8),
-
-          // 3. 스크롤이 필요한 나머지 카드 부분만 Expanded와 ListView로 처리
+          const SizedBox(height: 0),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 3, 16, 16),
               children: [
                 _buildCombinedScheduleCard(),
               ],
@@ -379,12 +424,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ],
       ),
-      // ▲▲▲ [수정] 원하시는 대로 레이아웃 재구성 ▲▲▲
     );
   }
 
   Widget _buildCalendar() {
-    // ... (기존과 동일) ...
     return TableCalendar(
       locale: 'ko_KR',
       firstDay: DateTime.utc(2020, 1, 1),
@@ -406,22 +449,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
           color: Colors.red,
           shape: BoxShape.circle,
         ),
+        markerDecoration: BoxDecoration(
+          color: Colors.lightBlue,
+          shape: BoxShape.circle,
+        ),
       ),
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
       onDaySelected: _onDaySelected,
-      // ▼▼▼ [추가] 이벤트 마커 표시를 위한 설정 ▼▼▼
       eventLoader: (day) {
         return _allSchedules.where((schedule) {
-          if (schedule['startDate'] == null) return false;
+          if (schedule['startDate'] == null || schedule['endDate'] == null) {
+            return false;
+          }
           try {
             final startDate = DateTime.parse(schedule['startDate']);
-            return isSameDay(startDate, day);
-          } catch(e) {
+            final endDate = DateTime.parse(schedule['endDate']);
+
+            final normalizedDay = DateTime.utc(day.year, day.month, day.day);
+            final normalizedStartDate =
+            DateTime.utc(startDate.year, startDate.month, startDate.day);
+            final normalizedEndDate =
+            DateTime.utc(endDate.year, endDate.month, endDate.day);
+
+            return (normalizedDay.isAtSameMomentAs(normalizedStartDate) ||
+                normalizedDay.isAfter(normalizedStartDate)) &&
+                (normalizedDay.isAtSameMomentAs(normalizedEndDate) ||
+                    normalizedDay.isBefore(normalizedEndDate));
+          } catch (e) {
             return false;
           }
         }).toList();
       },
-      // ▲▲▲ [추가] 이벤트 마커 표시를 위한 설정 ▲▲▲
     );
   }
 
@@ -433,18 +491,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
           "Schedule",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        // ▼▼▼ [수정] '+' 아이콘을 누르면 일정 추가 화면으로 이동 ▼▼▼
         IconButton(
           icon: const Icon(Icons.add, color: Colors.black),
           onPressed: _navigateAndRefresh,
         ),
-        // ▲▲▲ [수정] '+' 아이콘을 누르면 일정 추가 화면으로 이동 ▲▲▲
       ],
     );
   }
 
   Widget _buildCombinedScheduleCard() {
-    // ... (기존과 동일) ...
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
@@ -467,7 +522,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Column(
               children: [
                 _buildDateWeatherCard(),
-                const SizedBox(height: 3),
                 _buildLooksCard(),
               ],
             ),
@@ -480,7 +534,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDateWeatherCard() {
-    // ... (기존과 동일) ...
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -526,22 +579,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildLooksCard() {
-    // ... (기존과 동일) ...
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text('Looks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            // ▼▼▼ [수정] '+' 아이콘 버튼으로 변경 ▼▼▼
             IconButton(
                 onPressed: () { /* TODO: Looks 추가 기능 */},
                 icon: const Icon(Icons.add, size: 20)
             ),
-            // ▲▲▲ [수정] '+' 아이콘 버튼으로 변경 ▲▲▲
           ],
         ),
-        // const SizedBox(height: 0),
         Container(
           height: 170,
           decoration: BoxDecoration(
@@ -570,15 +619,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
       itemCount: _selectedDaySchedules.length,
       itemBuilder: (context, index) {
         final schedule = _selectedDaySchedules[index];
-        // ▼▼▼ [수정] location_name 대신 location을 사용하도록 변경 ▼▼▼
-        final location = schedule['location']?.toString() ?? '위치 정보 없음';
+        final location = (schedule['location'] as String?)?.isNotEmpty == true ? schedule['location'] : '위치 정보 없음';
+        final startTime = schedule['startTime']?.toString() ?? '';
+        final endTime = schedule['endTime']?.toString() ?? '';
+        final startDateStr = schedule['startDate']?.toString() ?? '';
+        final endDateStr = schedule['endDate']?.toString() ?? '';
+
+        String dateTimeString;
+
+        try {
+          final selectedDate = _selectedDay!;
+          final startDate = DateTime.parse(startDateStr);
+          final endDate = DateTime.parse(endDateStr);
+
+          final isAllDay = (startTime == '00:00' && endTime == '23:59');
+          final isSingleDay = isSameDay(startDate, endDate);
+          final isFirstDay = isSameDay(selectedDate, startDate);
+          final isLastDay = isSameDay(selectedDate, endDate);
+
+          final formattedDate = DateFormat('yy.MM.dd').format(selectedDate);
+
+          if (isSingleDay) {
+            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime - $endTime';
+          } else {
+            if (isFirstDay) {
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime 부터';
+            } else if (isLastDay) {
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $endTime 까지';
+            } else {
+              dateTimeString = '$formattedDate, 하루종일';
+            }
+          }
+        } catch (e) {
+          dateTimeString = '시간 정보 없음';
+        }
 
         return GestureDetector(
           onTap: () => _showScheduleDetails(schedule),
           child: _buildScheduleItem(
             Colors.lightBlue,
             schedule['title'].toString(),
-            schedule['startDate'].toString(),
+            dateTimeString,
             location,
           ),
         );
@@ -590,31 +671,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _buildScheduleItem(
       Color color,
       String title,
-      String date,
+      String dateTimeInfo,
       String location,
       ) {
     return Row(
-      // ▼▼▼ [수정] crossAxisAlignment를 center로 변경하여 세로 중앙 정렬 ▼▼▼
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // ▼▼▼ [수정] Container에 decoration을 사용하여 둥근 모서리 적용 ▼▼▼
         Container(
           width: 4,
-          height: 55, // 높이를 약간 줄여서 중앙에 더 잘 맞게 조정
+          height: 50,
           decoration: BoxDecoration(
-            color: color, // 색상은 여기서 지정
-            borderRadius: BorderRadius.circular(10), // 모서리를 둥글게
+            color: color,
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
-        // ▲▲▲ [수정] Container에 decoration을 사용하여 둥근 모서리 적용 ▲▲▲
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
-              Text(date, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+              Text(dateTimeInfo, style: const TextStyle(color: Colors.black54, fontSize: 12)),
               const SizedBox(height: 4),
               Text(location, style: const TextStyle(color: Colors.black54, fontSize: 12)),
             ],
@@ -629,19 +708,94 @@ class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;
   const ScheduleDetailDialog({super.key, required this.schedule});
 
+  String _getAlarmText(String? unit, int? value) {
+    if (unit == null || value == null || unit == 'none') {
+      return '알림 없음';
+    }
+    switch (unit) {
+      case 'minutes':
+        return value == 0 ? '정시' : '$value분 전';
+      case 'hours':
+        return '$value시간 전';
+      case 'days':
+        return '$value일 전';
+      default:
+        return '알림 없음';
+    }
+  }
+
+  // --- ▼▼▼ [수정] 날짜/시간 포맷팅 로직 변경 ▼▼▼ ---
+  String _formatScheduleDateTime(Map<String, dynamic> schedule) {
+    final String? startDateStr = schedule['startDate'] as String?;
+    final String? endDateStr = schedule['endDate'] as String?;
+    final String? startTimeStr = schedule['startTime'] as String?;
+    final String? endTimeStr = schedule['endTime'] as String?;
+
+    if (startDateStr == null || endDateStr == null || startTimeStr == null || endTimeStr == null) {
+      return "날짜/시간 정보 없음";
+    }
+
+    try {
+      final startDate = DateTime.parse(startDateStr);
+      final endDate = DateTime.parse(endDateStr);
+
+      final isAllDay = (startTimeStr == '00:00' && endTimeStr == '23:59');
+      final isSingleDay = isSameDay(startDate, endDate);
+
+      final dateFormat = DateFormat('yy.MM.dd.(E)', 'ko_KR');
+      final dateTimeFormat = DateFormat('yy.MM.dd.(E) HH:mm', 'ko_KR');
+
+      if (isSingleDay) {
+        // 1. 종일 일정 (당일)
+        if (isAllDay) {
+          return '${dateFormat.format(startDate)} 하루 종일';
+        }
+        // 2. 시간 일정 (당일)
+        else {
+          return '${dateFormat.format(startDate)} $startTimeStr - $endTimeStr';
+        }
+      } else {
+        // 3. 종일 일정 (연속)
+        if (isAllDay) {
+          return '${dateFormat.format(startDate)} - ${dateFormat.format(endDate)}';
+        }
+        // 4. 시간 일정 (연속)
+        else {
+          final fullStartDate = DateTime.parse('${startDateStr.substring(0, 10)}T$startTimeStr');
+          final fullEndDate = DateTime.parse('${endDateStr.substring(0, 10)}T$endTimeStr');
+          return '${dateTimeFormat.format(fullStartDate)} - ${dateTimeFormat.format(fullEndDate)}';
+        }
+      }
+    } catch (e) {
+      return "날짜/시간 형식 오류";
+    }
+  }
+  // --- ▲▲▲ [수정] 날짜/시간 포맷팅 로직 변경 ▲▲▲ ---
+
   @override
   Widget build(BuildContext context) {
-    // ▼▼▼ [수정] 서버에서 받아온 키 이름에 맞게 변경 ▼▼▼
-    final location = schedule['location']?.toString() ?? '정보 없음';
-    final explanation = schedule['explanation']?.toString() ?? '설명 없음';
-    final startDate = schedule['startDate']?.toString() ?? '';
-    final endDate = schedule['endDate']?.toString() ?? '';
-    // ▲▲▲ [수정] 서버에서 받아온 키 이름에 맞게 변경 ▲▲▲
+    final String title = (schedule['title'] as String?) ?? '제목 없음';
+    // --- ▼▼▼ [수정] _formatScheduleDateTime 메서드 호출로 변경 ▼▼▼ ---
+    final String dateRange = _formatScheduleDateTime(schedule);
+    // --- ▲▲▲ [수정] _formatScheduleDateTime 메서드 호출로 변경 ▲▲▲ ---
+    final String? locationName = (schedule['location'] as String?)?.isNotEmpty == true ? schedule['location'] as String : null;
+    final String? locationAddress = (schedule['locationAddress'] as String?)?.isNotEmpty == true ? schedule['locationAddress'] as String : null;
+    final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true ? schedule['tpo1'] as String : null;
+    final String? tpo2 = (schedule['tpo2'] as String?)?.isNotEmpty == true ? schedule['tpo2'] as String : null;
+    final String explanation = (schedule['explanation'] as String?) ?? '설명 없음';
+    final List<String> participants = (schedule['participants'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [];
+    final String alarmText = _getAlarmText(schedule['alarmUnit'] as String?, schedule['alarmValue'] as int?);
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      alignment: Alignment.bottomCenter,
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.only(bottom: 10, left: 10, right: 10),
       child: Container(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(30),
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -650,40 +804,120 @@ class ScheduleDetailDialog extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.delete_outline),
-                  const Text('내 일정', style: TextStyle(fontWeight: FontWeight.bold)),
+                  IconButton(onPressed: (){}, icon: const Icon(Icons.delete_outline)),
+                  Column(
+                    children: [
+                      const Text('내 일정', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('기본일정', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                    ],
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 45,
+                      margin: const EdgeInsets.only(top: 4, right: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.lightBlue,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(dateRange, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    IconButton(onPressed: (){}, icon: const Icon(Icons.edit_outlined), constraints: const BoxConstraints()),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(width: 5, height: 40, color: Colors.purple),
+                  Expanded(
+                    child: SizedBox(
+                      height: 110,
+                      child: _buildInfoCard('알림설정', [alarmText], Icons.notifications_outlined),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 110,
+                      child: _buildInfoCard('참가자', participants, Icons.people_outline),
+                    ),
+                  ),
+                ],
+              ),
+              if (locationName != null) ...[
+                const SizedBox(height: 16),
+                _buildSectionCard(
+                  icon: Icons.location_on_outlined,
+                  title: locationName,
+                  subtitle: locationAddress,
+                ),
+              ],
+              if (tpo1 != null) ...[
+                const SizedBox(height: 16),
+                _buildSectionCard(
+                  icon: Icons.sell_outlined,
+                  title: tpo1,
+                  subtitle: tpo2,
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                      child: Container(
+                        height: 232,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12)
+                        ),
+                        child: const Center(child: Text("Look 정보 없음")),
+                      )
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(schedule['title'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                        Text('$startDate - $endDate', style: const TextStyle(color: Colors.grey)),
+                        SizedBox(
+                          height: 110,
+                          child: _buildInfoCard('날씨', ["정보 없음"], Icons.thermostat),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 110,
+                          child: _buildInfoCard('설명', [explanation], Icons.notes),
+                        ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.edit_outlined),
                 ],
-              ),
-              const SizedBox(height: 20),
-              _buildDetailSection(title: '알림설정', content: '시작시간 알림\n10분 전 알림'),
-              _buildDetailSection(title: '참가자', content: 'ava9797@hs.ac.kr\nkdhok2285@hs.ac.kr'),
-              _buildDetailSection(title: '위치', content: location),
-              _buildDetailSection(title: 'TPO', content: '정보 없음'), // category 정보가 없으므로 '정보 없음'으로 표시
-              _buildDetailSection(title: '날씨', content: '날씨 정보 불러오는 중...'),
-              _buildDetailSection(title: '설명', content: explanation),
+              )
             ],
           ),
         ),
@@ -691,18 +925,64 @@ class ScheduleDetailDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailSection({required String title, required String content}) {
-    // ... (기존과 동일) ...
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildInfoCard(String title, List<String> items, IconData icon) {
+    final validItems = items.where((item) => item.isNotEmpty && item != '설명 없음').toList();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          Text(title, style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(content),
-          const SizedBox(height: 8),
-          const Divider(),
+          if (validItems.isEmpty)
+            Row(
+              children: [
+                Icon(icon, size: 16, color: Colors.grey[700]),
+                const SizedBox(width: 8),
+                const Expanded(child: Text("정보 없음", overflow: TextOverflow.ellipsis)),
+              ],
+            )
+          else
+            ...validItems.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4.0),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: Colors.grey[700]),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12))),
+                ],
+              ),
+            )).toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({required IconData icon, required String title, String? subtitle}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[800]),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              if (subtitle != null && subtitle.isNotEmpty)
+                Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+            ],
+          ),
         ],
       ),
     );

@@ -106,6 +106,7 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _filterSchedules(DateTime selectedDate) {
+    // 1. 선택된 날짜에 해당하는 일정 필터링
     _selectedDaySchedules = _allSchedules.where((schedule) {
       if (schedule['startDate'] == null || schedule['endDate'] == null) {
         return false;
@@ -129,6 +130,45 @@ class CalendarScreenState extends State<CalendarScreen> {
         return false;
       }
     }).toList();
+
+    // 2. 새로운 정렬 로직 적용
+    _selectedDaySchedules.sort((a, b) {
+      // 각 일정이 선택된 날짜(selectedDate)를 기준으로 어떤 유형인지 판단하는 함수
+      int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
+        final startDate = DateTime.parse(schedule['startDate']);
+        final endDate = DateTime.parse(schedule['endDate']);
+        final selectedDay = DateTime(selected.year, selected.month, selected.day);
+
+        final isTrueAllDay = schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
+        final isFirstDay = isSameDay(startDate, selectedDay);
+        final isLastDay = isSameDay(endDate, selectedDay);
+        final isMultiDay = !isSameDay(startDate, endDate);
+
+        if (isTrueAllDay) return 1; // 1: 진짜 하루종일 일정
+        if (isMultiDay && !isFirstDay && !isLastDay) return 1; // 1: 연속 일정의 중간 날짜
+        if (isMultiDay && isLastDay) return 2; // 2: 연속 일정의 마지막 날
+        return 3; // 3: 그 외 시간 지정 일정
+      }
+
+      final typeA = getScheduleType(a, selectedDate);
+      final typeB = getScheduleType(b, selectedDate);
+
+      // 유형에 따라 정렬 (1 -> 2 -> 3 순서)
+      if (typeA != typeB) {
+        return typeA.compareTo(typeB);
+      }
+
+      // 유형이 같다면 시작 시간으로 정렬
+      final startTimeA = a['startTime'] ?? '00:00';
+      final startTimeB = b['startTime'] ?? '00:00';
+      int compare = startTimeA.compareTo(startTimeB);
+      if (compare != 0) {
+        return compare;
+      }
+
+      // 시작 시간도 같으면 기존 순서 유지
+      return 0;
+    });
   }
 
 

@@ -187,6 +187,7 @@ class CalendarScreenState extends State<CalendarScreen> {
 
     if (_currentPosition != null) {
       await _fetchWeather(_currentPosition!, selectedDay);
+      print("선택 날짜: $selectedDay / 위치: $_currentPosition");
     }
 
     if (mounted) {
@@ -250,6 +251,7 @@ class CalendarScreenState extends State<CalendarScreen> {
           String temp = weatherData['T1H'] ?? '';
           String sky = weatherData['SKY'] ?? '';
           String pty = weatherData['PTY'] ?? '';
+          print("pty: $pty, sky: $sky");
           if (temp.isNotEmpty && mounted) {
             final ptyString = _getPtyString(pty);
             final skyString = _getSkyString(sky);
@@ -274,7 +276,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-            '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+            '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
       final response = await http.get(url);
       if (response.statusCode == 200) {

@@ -669,14 +669,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 2,
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: Colors.black),
       ),
       child: _isLoading
           ? const Center(child: CircularProgressIndicator())

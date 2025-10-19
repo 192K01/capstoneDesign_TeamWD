@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings_screen.dart';
+import 'cloth_detail_screen.dart'; // 옷 상세정보 화면 import
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -12,21 +13,17 @@ class ProfileScreen extends StatefulWidget {
   ProfileScreenState createState() => ProfileScreenState();
 }
 
-// --- ▼▼▼ [수정] State 클래스 이름 변경 및 기능 추가 ▼▼▼ ---
 class ProfileScreenState extends State<ProfileScreen>
     with WidgetsBindingObserver {
   bool _isClosetTabSelected = true;
   int saved_look = 0;
 
-  // --- ▼▼▼ [수정] 필터링 기능 추가 ▼▼▼ ---
   List<Map<String, dynamic>> _allClosetItems = []; // 서버에서 받은 모든 옷
   List<Map<String, dynamic>> _filteredClosetItems = []; // 현재 필터가 적용된 옷
   bool _isLoading = true;
   String _userName = "User Name";
   String _selectedCategory = '전체'; // 현재 선택된 카테고리
   final List<String> _filterCategories = ['전체', '상의', '하의', '신발'];
-
-  // --- ▲▲▲ [추가] 옷장 데이터를 위한 변수들 ▲▲▲ ---
 
   @override
   void initState() {
@@ -61,7 +58,6 @@ class ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  // --- ▼▼▼ [추가] 서버에서 옷 목록을 가져오는 함수 ▼▼▼ ---
   Future<void> performSearch() async {
     if (!mounted) return;
     setState(() {
@@ -101,7 +97,6 @@ class ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  // --- ▲▲▲ [추가] 서버에서 옷 목록을 가져오는 함수 ▲▲▲ ---
   void _applyFilter() {
     if (_selectedCategory == '전체') {
       _filteredClosetItems = List.from(_allClosetItems);
@@ -141,19 +136,16 @@ class ProfileScreenState extends State<ProfileScreen>
           _buildProfileHeader(),
           _buildProfileTabs(),
           if (_isClosetTabSelected) _buildFilterBar(),
-          // --- ▼▼▼ [수정] Expanded로 감싸서 남은 공간을 채우도록 변경 ▼▼▼ ---
           Expanded(
             child: _isClosetTabSelected
                 ? _buildClosetGrid()
                 : _buildBookmarkScreen(),
           ),
-          // --- ▲▲▲ [수정] Expanded로 감싸서 남은 공간을 채우도록 변경 ▲▲▲ ---
         ],
       ),
     );
   }
 
-  // (이하 _buildProfileHeader, _buildProfileTabs, _buildTabItem, _buildFilterBar는 기존 코드와 동일)
   Widget _buildProfileHeader() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -210,7 +202,7 @@ class ProfileScreenState extends State<ProfileScreen>
   Widget _buildProfileTabs() {
     return Container(
       height: 50,
-      decoration: BoxDecoration(),
+      decoration: const BoxDecoration(),
       child: Row(
         children: [
           _buildTabItem(
@@ -307,13 +299,12 @@ class ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // --- ▼▼▼ [수정] _buildClosetGrid 함수를 서버 데이터와 연동 ▼▼▼ ---
   Widget _buildClosetGrid() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_filteredClosetItems.isEmpty) {
-      return Center(child: Text('해당 카테고리에 옷이 없습니다.'));
+      return const Center(child: Text('해당 카테고리에 옷이 없습니다.'));
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 16.0),
@@ -328,32 +319,42 @@ class ProfileScreenState extends State<ProfileScreen>
         itemBuilder: (context, index) {
           final cloth = _filteredClosetItems[index];
           final imagePath = cloth['clothingImg'] as String?;
-          return Card(
-            elevation: 0,
-            color: Colors.grey[200],
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+          return GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ClothDetailScreen(cloth: cloth),
+                  fullscreenDialog: true,
+                ),
+              );
+            },
+            child: Card(
+              elevation: 0,
+              color: Colors.grey[200],
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: (imagePath != null && imagePath.isNotEmpty)
+                  ? Image.file(
+                File(imagePath),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Icon(Icons.error_outline, color: Colors.white),
+                  );
+                },
+              )
+                  : const Center(
+                child: Icon(Icons.checkroom, size: 40, color: Colors.white),
+              ),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: (imagePath != null && imagePath.isNotEmpty)
-                ? Image.file(
-                    File(imagePath),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Center(
-                        child: Icon(Icons.error_outline, color: Colors.white),
-                      );
-                    },
-                  )
-                : const Center(
-                    child: Icon(Icons.checkroom, size: 40, color: Colors.white),
-                  ),
           );
         },
       ),
     );
   }
-  // --- ▲▲▲ [수정] _buildClosetGrid 함수를 서버 데이터와 연동 ▲▲▲ ---
 
   Widget _buildBookmarkScreen() {
     return const Center(

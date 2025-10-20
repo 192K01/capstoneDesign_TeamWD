@@ -44,4 +44,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-../ai_server
+# ../ai_server
+# aws ec2 비밀키 제외
+/ai_server/teamwd_ec2_rsa.pem

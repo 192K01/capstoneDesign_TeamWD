@@ -1,7 +1,7 @@
 // 📂 lib/calendar_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http; // http 패키지 import 확인
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -9,6 +9,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
 import 'schedule_add.dart'; // 일정 추가 화면 import
+import 'package:flutter/cupertino.dart'; // CupertinoDatePicker 등을 위해 추가
+
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -84,7 +86,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    const serverIp = '3.36.66.130';
+    const serverIp = '3.36.66.130'; // 실제 서버 IP로 변경하세요
     final url = Uri.parse('http://$serverIp:5000/schedule/$userEmail');
 
     try {
@@ -187,6 +189,7 @@ class CalendarScreenState extends State<CalendarScreen> {
 
     if (_currentPosition != null) {
       await _fetchWeather(_currentPosition!, selectedDay);
+      print("선택 날짜: $selectedDay / 위치: $_currentPosition");
     }
 
     if (mounted) {
@@ -221,7 +224,7 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
   Future<void> _fetchCurrentWeather(double lat, double lng, DateTime date) async {
     try {
-      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
+      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg'; // 실제 API 키로 교체하세요
       String baseDate = DateFormat('yyyyMMdd').format(date);
       String baseTime = DateFormat('HH').format(date) + '00';
       final gridCoords = _convertToGrid(lat, lng);
@@ -250,6 +253,7 @@ class CalendarScreenState extends State<CalendarScreen> {
           String temp = weatherData['T1H'] ?? '';
           String sky = weatherData['SKY'] ?? '';
           String pty = weatherData['PTY'] ?? '';
+          print("pty: $pty, sky: $sky");
           if (temp.isNotEmpty && mounted) {
             final ptyString = _getPtyString(pty);
             final skyString = _getSkyString(sky);
@@ -266,7 +270,7 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
   Future<void> _fetchMinMaxTemp(double lat, double lng, DateTime date) async {
     try {
-      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
+      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg'; // 실제 API 키로 교체하세요
       final baseDate = DateFormat('yyyyMMdd').format(date);
       const baseTime = '0200';
       final gridCoords = _convertToGrid(lat, lng);
@@ -352,16 +356,63 @@ class CalendarScreenState extends State<CalendarScreen> {
     return {'x': x, 'y': y};
   }
 
-  void _showScheduleDetails(Map<String, dynamic> schedule) {
-    showDialog(
+  // --- ▼▼▼ [추가] 일정 삭제 함수 ▼▼▼ ---
+  Future<void> _deleteSchedule(int scheduleId) async {
+    // 서버 IP 주소 확인 필요
+    const serverIp = '3.36.66.130'; // 실제 서버 IP로 변경하세요
+    final url = Uri.parse('http://$serverIp:5000/schedule/$scheduleId');
+
+    try {
+      final response = await http.delete(url);
+
+      if (mounted) { // 위젯이 아직 화면에 있는지 확인
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('일정이 삭제되었습니다.'), backgroundColor: Colors.green),
+          );
+          // 삭제 성공 시, 상세 팝업 닫기 (확인 팝업 다음)
+          Navigator.of(context).pop(); // 상세 팝업 닫기
+          // 캘린더 화면 데이터 새로고침
+          refreshData();
+        } else {
+          final responseData = jsonDecode(response.body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('삭제 실패: ${responseData['message']}'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('삭제 중 오류 발생: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+  // --- ▲▲▲ [추가] 일정 삭제 함수 ▲▲▲ ---
+
+  Future<void> _showScheduleDetails(Map<String, dynamic> schedule) async { // async 추가
+    // --- ▼▼▼ [수정] Dialog 호출 시 결과값을 받아 처리하도록 수정 ▼▼▼ ---
+    await showDialog<bool>( // await 추가, 결과 타입을 bool? 로 지정
       context: context,
       barrierDismissible: true,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (BuildContext context) {
-        return ScheduleDetailDialog(schedule: schedule);
+        // ScheduleDetailDialog에 schedule_id 전달
+        return ScheduleDetailDialog(
+          schedule: schedule,
+          onDeleteConfirmed: () async { // 삭제 확인 콜백 전달
+            await _deleteSchedule(schedule['schedule_id']); // await 추가
+            // 삭제 성공 시 true 반환 (이미 _deleteSchedule 에서 pop 하므로 여기서 pop 불필요)
+            // 여기서 true를 반환할 필요는 없어졌습니다. _deleteSchedule 내부에서 처리합니다.
+          },
+        );
       },
     );
+    // 삭제 후 refreshData() 호출은 _deleteSchedule 내부에서 처리
+    // --- ▲▲▲ [수정] Dialog 호출 시 결과값을 받아 처리하도록 수정 ▲▲▲ ---
   }
+
 
   void _navigateAndRefresh() async {
     final result = await Navigator.push(
@@ -384,7 +435,7 @@ class CalendarScreenState extends State<CalendarScreen> {
         elevation: 0,
         leading: const IconButton(
           icon: Icon(Icons.menu, color: Colors.black),
-          onPressed: null,
+          onPressed: null, // TODO: Drawer or other menu action
         ),
         title: const Text('Calendar', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22)),
         centerTitle: true,
@@ -395,7 +446,7 @@ class CalendarScreenState extends State<CalendarScreen> {
           ),
           const IconButton(
             icon: Icon(Icons.notifications_outlined, color: Colors.black),
-            onPressed: null,
+            onPressed: null, // TODO: Notification action
           ),
         ],
       ),
@@ -446,11 +497,11 @@ class CalendarScreenState extends State<CalendarScreen> {
           shape: BoxShape.circle,
         ),
         selectedDecoration: BoxDecoration(
-          color: Colors.red,
+          color: Colors.red, // 선택된 날짜 색상
           shape: BoxShape.circle,
         ),
         markerDecoration: BoxDecoration(
-          color: Colors.lightBlue,
+          color: Colors.lightBlue, // 이벤트 마커 색상
           shape: BoxShape.circle,
         ),
       ),
@@ -465,17 +516,20 @@ class CalendarScreenState extends State<CalendarScreen> {
             final startDate = DateTime.parse(schedule['startDate']);
             final endDate = DateTime.parse(schedule['endDate']);
 
+            // 날짜만 비교하기 위해 UTC로 변환하여 시간 정보 제거
             final normalizedDay = DateTime.utc(day.year, day.month, day.day);
             final normalizedStartDate =
             DateTime.utc(startDate.year, startDate.month, startDate.day);
             final normalizedEndDate =
             DateTime.utc(endDate.year, endDate.month, endDate.day);
 
+            // day가 시작일과 종료일 사이에 있는지 확인 (시작일, 종료일 포함)
             return (normalizedDay.isAtSameMomentAs(normalizedStartDate) ||
                 normalizedDay.isAfter(normalizedStartDate)) &&
                 (normalizedDay.isAtSameMomentAs(normalizedEndDate) ||
                     normalizedDay.isBefore(normalizedEndDate));
           } catch (e) {
+            // 날짜 파싱 오류 시 false 반환
             return false;
           }
         }).toList();
@@ -493,7 +547,7 @@ class CalendarScreenState extends State<CalendarScreen> {
         ),
         IconButton(
           icon: const Icon(Icons.add, color: Colors.black),
-          onPressed: _navigateAndRefresh,
+          onPressed: _navigateAndRefresh, // 일정 추가 화면으로 이동
         ),
       ],
     );
@@ -592,11 +646,12 @@ class CalendarScreenState extends State<CalendarScreen> {
           ],
         ),
         Container(
-          height: 170,
+          height: 170, // Looks 카드 높이 조절
           decoration: BoxDecoration(
             color: Colors.grey[200],
             borderRadius: BorderRadius.circular(12),
           ),
+          // TODO: 실제 Looks 이미지 또는 정보 표시
           child: const Center(
             child: Icon(Icons.checkroom, color: Colors.white, size: 50),
           ),
@@ -608,14 +663,14 @@ class CalendarScreenState extends State<CalendarScreen> {
   Widget _buildScheduleList() {
     if (_selectedDaySchedules.isEmpty) {
       return const SizedBox(
-        height: 100,
+        height: 100, // 일정이 없을 때 표시될 영역의 높이
         child: Center(child: Text('선택된 날짜에 일정이 없습니다.')),
       );
     }
 
     return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true, // 내용물 크기에 맞게 높이 조절
+      physics: const NeverScrollableScrollPhysics(), // 내부 스크롤 비활성화
       itemCount: _selectedDaySchedules.length,
       itemBuilder: (context, index) {
         final schedule = _selectedDaySchedules[index];
@@ -628,36 +683,44 @@ class CalendarScreenState extends State<CalendarScreen> {
         String dateTimeString;
 
         try {
-          final selectedDate = _selectedDay!;
+          // 선택된 날짜 (_selectedDay)를 기준으로 시간 표시 로직 구현
+          final selectedDate = _selectedDay!; // null 아님을 확신
           final startDate = DateTime.parse(startDateStr);
           final endDate = DateTime.parse(endDateStr);
 
-          final isAllDay = (startTime == '00:00' && endTime == '23:59');
-          final isSingleDay = isSameDay(startDate, endDate);
-          final isFirstDay = isSameDay(selectedDate, startDate);
-          final isLastDay = isSameDay(selectedDate, endDate);
+          final isAllDay = (startTime == '00:00' && endTime == '23:59'); // 진짜 하루종일 일정인지
+          final isSingleDay = isSameDay(startDate, endDate); // 하루짜리 일정인지
+          final isFirstDay = isSameDay(selectedDate, startDate); // 선택된 날이 시작일인지
+          final isLastDay = isSameDay(selectedDate, endDate); // 선택된 날이 종료일인지
 
           final formattedDate = DateFormat('yy.MM.dd').format(selectedDate);
-
+          final formattedLastDate = DateFormat('yy.MM.dd').format(endDate);
           if (isSingleDay) {
-            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime - $endTime';
+            // 1. 당일 일정
+            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - $endTime';
           } else {
+            // 2. 연속 일정
             if (isFirstDay) {
-              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $startTime 부터';
+              // 시작일: 시작시간 표시 (종료일/시간 표시 방식은 논의 필요)
+              // dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - $formattedLastDate $endTime';
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - 계속';
             } else if (isLastDay) {
-              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$formattedDate, $endTime 까지';
+              // 종료일: 종료시간 표시 (00:00부터 시작하는 것으로 간주)
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '00:00 - $endTime';
             } else {
-              dateTimeString = '$formattedDate, 하루종일';
+              // 중간 날짜: '하루종일' 표시
+              dateTimeString = '하루종일';
             }
           }
         } catch (e) {
-          dateTimeString = '시간 정보 없음';
+          dateTimeString = '시간 정보 없음'; // 날짜 파싱 오류 등 예외 처리
         }
+
 
         return GestureDetector(
           onTap: () => _showScheduleDetails(schedule),
           child: _buildScheduleItem(
-            Colors.lightBlue,
+            Colors.lightBlue, // TODO: 일정별 색상?
             schedule['title'].toString(),
             dateTimeString,
             location,
@@ -668,6 +731,7 @@ class CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  // 일정 항목 하나를 그리는 위젯
   Widget _buildScheduleItem(
       Color color,
       String title,
@@ -675,11 +739,11 @@ class CalendarScreenState extends State<CalendarScreen> {
       String location,
       ) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center, // 세로 중앙 정렬
       children: [
         Container(
           width: 4,
-          height: 50,
+          height: 50, // 아이템 높이 고정 (필요시 조절)
           decoration: BoxDecoration(
             color: color,
             borderRadius: BorderRadius.circular(10),
@@ -689,7 +753,7 @@ class CalendarScreenState extends State<CalendarScreen> {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center, // Column 내부도 중앙 정렬
             children: [
               Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
@@ -702,11 +766,19 @@ class CalendarScreenState extends State<CalendarScreen> {
       ],
     );
   }
-}
+} // CalendarScreen 끝
 
+
+// --- ▼▼▼ [수정] ScheduleDetailDialog 위젯 수정 ▼▼▼ ---
 class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;
-  const ScheduleDetailDialog({super.key, required this.schedule});
+  final VoidCallback onDeleteConfirmed; // 삭제 확인 시 호출될 콜백 함수 추가
+
+  const ScheduleDetailDialog({
+    super.key,
+    required this.schedule,
+    required this.onDeleteConfirmed, // 생성자에서 콜백 함수 받기
+  });
 
   String _getAlarmText(String? unit, int? value) {
     if (unit == null || value == null || unit == 'none') {
@@ -724,7 +796,6 @@ class ScheduleDetailDialog extends StatelessWidget {
     }
   }
 
-  // --- ▼▼▼ [수정] 날짜/시간 포맷팅 로직 변경 ▼▼▼ ---
   String _formatScheduleDateTime(Map<String, dynamic> schedule) {
     final String? startDateStr = schedule['startDate'] as String?;
     final String? endDateStr = schedule['endDate'] as String?;
@@ -770,14 +841,47 @@ class ScheduleDetailDialog extends StatelessWidget {
       return "날짜/시간 형식 오류";
     }
   }
-  // --- ▲▲▲ [수정] 날짜/시간 포맷팅 로직 변경 ▲▲▲ ---
+
+  // --- ▼▼▼ [추가] 삭제 확인 팝업 표시 함수 ▼▼▼ ---
+  Future<void> _showDeleteConfirmationDialog(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // 바깥 영역 탭해도 닫히지 않음
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('일정 삭제'),
+          content: const SingleChildScrollView(
+            child: ListBody(
+              children: <Widget>[
+                Text('이 일정을 삭제할까요?'),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('취소'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // 확인 팝업만 닫기
+              },
+            ),
+            TextButton(
+              child: const Text('확인', style: TextStyle(color: Colors.red)),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // 확인 팝업 닫기
+                onDeleteConfirmed(); // 전달받은 삭제 함수 호출 (API 요청 및 상세 팝업 닫기 포함)
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  // --- ▲▲▲ [추가] 삭제 확인 팝업 표시 함수 ▲▲▲ ---
 
   @override
   Widget build(BuildContext context) {
     final String title = (schedule['title'] as String?) ?? '제목 없음';
-    // --- ▼▼▼ [수정] _formatScheduleDateTime 메서드 호출로 변경 ▼▼▼ ---
     final String dateRange = _formatScheduleDateTime(schedule);
-    // --- ▲▲▲ [수정] _formatScheduleDateTime 메서드 호출로 변경 ▲▲▲ ---
     final String? locationName = (schedule['location'] as String?)?.isNotEmpty == true ? schedule['location'] as String : null;
     final String? locationAddress = (schedule['locationAddress'] as String?)?.isNotEmpty == true ? schedule['locationAddress'] as String : null;
     final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true ? schedule['tpo1'] as String : null;
@@ -804,7 +908,12 @@ class ScheduleDetailDialog extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(onPressed: (){}, icon: const Icon(Icons.delete_outline)),
+                  // --- ▼▼▼ [수정] 삭제 아이콘 onPressed에 확인 팝업 호출 연결 ▼▼▼ ---
+                  IconButton(
+                      onPressed: () => _showDeleteConfirmationDialog(context), // 여기 수정
+                      icon: const Icon(Icons.delete_outline)
+                  ),
+                  // --- ▲▲▲ [수정] 삭제 아이콘 onPressed에 확인 팝업 호출 연결 ▲▲▲ ---
                   Column(
                     children: [
                       const Text('내 일정', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -832,7 +941,7 @@ class ScheduleDetailDialog extends StatelessWidget {
                       height: 45,
                       margin: const EdgeInsets.only(top: 4, right: 12),
                       decoration: BoxDecoration(
-                        color: Colors.lightBlue,
+                        color: Colors.lightBlue, // TODO: 일정별 색상?
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -846,7 +955,7 @@ class ScheduleDetailDialog extends StatelessWidget {
                         ],
                       ),
                     ),
-                    IconButton(onPressed: (){}, icon: const Icon(Icons.edit_outlined), constraints: const BoxConstraints()),
+                    IconButton(onPressed: (){ /* TODO: Edit schedule */}, icon: const Icon(Icons.edit_outlined), constraints: const BoxConstraints()),
                   ],
                 ),
               ),
@@ -897,7 +1006,7 @@ class ScheduleDetailDialog extends StatelessWidget {
                             color: Colors.grey[100],
                             borderRadius: BorderRadius.circular(12)
                         ),
-                        child: const Center(child: Text("Look 정보 없음")),
+                        child: const Center(child: Text("Look 정보 없음")), // TODO: Add Look info
                       )
                   ),
                   const SizedBox(width: 12),
@@ -906,7 +1015,7 @@ class ScheduleDetailDialog extends StatelessWidget {
                       children: [
                         SizedBox(
                           height: 110,
-                          child: _buildInfoCard('날씨', ["정보 없음"], Icons.thermostat),
+                          child: _buildInfoCard('날씨', ["정보 없음"], Icons.thermostat), // TODO: Add Weather info
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
@@ -954,7 +1063,7 @@ class ScheduleDetailDialog extends StatelessWidget {
                 children: [
                   Icon(icon, size: 16, color: Colors.grey[700]),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12))),
+                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
                 ],
               ),
             )).toList(),
@@ -988,3 +1097,4 @@ class ScheduleDetailDialog extends StatelessWidget {
     );
   }
 }
+// --- ▲▲▲ [수정] ScheduleDetailDialog 위젯 수정 ▲▲▲ ---

@@ -320,14 +320,23 @@ class ProfileScreenState extends State<ProfileScreen>
           final cloth = _filteredClosetItems[index];
           final imagePath = cloth['clothingImg'] as String?;
           return GestureDetector(
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              // ▼▼▼ [수정됨] async/await 추가 ▼▼▼
+              // 상세 화면으로 이동하고, 결과값을 받습니다.
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => ClothDetailScreen(cloth: cloth),
                   fullscreenDialog: true,
                 ),
               );
+
+              // ▼▼▼ [수정됨] 결과값 확인 후 목록 새로고침 ▼▼▼
+              // 만약 상세 화면에서 true를 반환했다면 (삭제 성공)
+              // performSearch()를 호출하여 옷 목록을 새로고칩니다.
+              if (result == true) {
+                performSearch();
+              }
             },
             child: Card(
               elevation: 0,

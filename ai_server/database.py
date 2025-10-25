@@ -30,8 +30,13 @@ def init_db():
         # clothes 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS clothes (
-                cloth_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, name TEXT, subCategory TEXT,
-                articleType TEXT, color TEXT, clothingImg TEXT, memo TEXT,
+                cloth_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                user_id INTEGER, 
+                name TEXT, 
+                subCategory TEXT,
+                articleType TEXT, 
+                color TEXT, 
+                clothingImg TEXT, memo TEXT,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         ''')

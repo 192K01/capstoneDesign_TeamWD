@@ -150,6 +150,49 @@ def get_clothes(email):
     clothes_list = [dict(row) for row in clothes_rows]
     return jsonify(clothes_list)
 
+# --- ▼▼▼ [추가됨] 옷 삭제 API 엔드포인트 ▼▼▼ ---
+@app.route('/clothes/<int:cloth_id>', methods=['DELETE'])
+def delete_cloth(cloth_id):
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        # 삭제하려는 옷이 존재하는지 확인
+        cursor.execute("SELECT id FROM clothes WHERE id = ?", (cloth_id,))
+        cloth_exists = cursor.fetchone()
+
+        if not cloth_exists:
+            conn.close()
+            return jsonify({"message": "삭제할 옷을 찾을 수 없습니다."}), 404
+
+        # 옷 삭제 실행
+        cursor.execute("DELETE FROM clothes WHERE id = ?", (cloth_id,))
+        conn.commit()
+
+        # 삭제된 행의 수가 0보다 크면 성공
+        if conn.total_changes > 0:
+            return jsonify({"message": "옷이 성공적으로 삭제되었습니다."}), 200
+        else:
+            # 동시성 문제 등으로 삭제되지 않은 경우
+            return jsonify({"message": "옷 삭제에 실패했습니다."}), 500
+
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()  # 오류 발생 시 롤백
+        print(f"An error occurred in DELETE /clothes/<cloth_id>: {e}")
+        return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
+    except Exception as e:
+        print(f"An error occurred in DELETE /clothes/<cloth_id>: {e}")
+        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+# --- ▲▲▲ [추가됨] 옷 삭제 API 엔드포인트 ▲▲▲ ---
+
+
 # --- ▼▼▼ [수정] TPO 데이터 저장 로직 추가 ▼▼▼ ---
 @app.route('/schedule', methods=['POST'])
 def add_schedule():

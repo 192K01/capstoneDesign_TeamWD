@@ -1,10 +1,85 @@
 import 'dart:io';
+import 'dart:convert'; // http 통신용
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http; // http 통신용
 
 class ClothDetailScreen extends StatelessWidget {
   final Map<String, dynamic> cloth;
 
   const ClothDetailScreen({super.key, required this.cloth});
+
+  // 옷 삭제 함수
+  Future<void> _deleteCloth(BuildContext context) async {
+
+    // ▼▼▼ [수정됨] 'cloth_id' -> 'id'로 변경 ▼▼▼
+    // cloth 맵에서 'id'를 가져옵니다.
+    final clothId = cloth['id'];
+    // ▲▲▲ [수정됨] 'cloth_id' -> 'id'로 변경 ▲▲▲
+
+    if (clothId == null) {
+      // clothId가 없는 경우 오류 메시지 표시
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')),
+      );
+      return;
+    }
+
+    // 삭제 확인 다이얼로그 표시
+    final bool? confirmed = await showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('삭제 확인'),
+          content: const Text('정말로 이 옷을 삭제하시겠습니까?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false), // 취소
+              child: const Text('아니요'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true), // 확인
+              child: const Text('예'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // 사용자가 '아니요'를 선택했거나 다이얼로그 밖을 탭한 경우
+    if (confirmed != true) {
+      return;
+    }
+
+    // 사용자가 '예'를 선택한 경우, 서버에 DELETE 요청 전송
+    try {
+      // profile_screen.dart에 정의된 서버 IP
+      const String serverIp = '3.36.66.130';
+      final uri = Uri.parse('http://$serverIp:5000/clothes/$clothId');
+
+      final response = await http.delete(uri);
+
+      if (response.statusCode == 200) {
+        // 삭제 성공
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('옷이 삭제되었습니다.')),
+        );
+        // 화면을 닫고 profile_screen에 true를 반환하여 새로고침 신호 보냄
+        if (context.mounted) {
+          Navigator.pop(context, true);
+        }
+      } else {
+        // 서버 측 삭제 실패
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('삭제 실패 (서버 오류): ${response.body}')),
+        );
+      }
+    } catch (e) {
+      // 네트워크 오류 또는 기타 예외
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('삭제 중 오류 발생: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +102,11 @@ class ClothDetailScreen extends StatelessWidget {
         actions: [
           IconButton(icon: const Icon(Icons.favorite_border, color: Colors.black), onPressed: () {}),
           IconButton(icon: const Icon(Icons.edit, color: Colors.black), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.black), onPressed: () {}),
+          // onPressed에 _deleteCloth 함수 연결
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.black),
+            onPressed: () => _deleteCloth(context),
+          ),
           IconButton(icon: const Icon(Icons.close, color: Colors.black), onPressed: () => Navigator.pop(context)),
         ],
       ),

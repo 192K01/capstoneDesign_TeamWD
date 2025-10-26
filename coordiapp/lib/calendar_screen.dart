@@ -647,6 +647,14 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDateWeatherCard() {
+    // --- ▼▼▼ [수정] 오늘/과거/미래 UI 분기를 위한 날짜 비교 로직 추가 ▼▼▼ ---
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selected = _selectedDay ?? now; // _selectedDay가 null일 경우 오늘로 간주
+    final selectedDate = DateTime(selected.year, selected.month, selected.day);
+    final bool isToday = selectedDate.isAtSameMomentAs(today);
+    // --- ▲▲▲ [수정] 오늘/과거/미래 UI 분기를 위한 날짜 비교 로직 추가 ▲▲▲ ---
+
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -670,14 +678,20 @@ class CalendarScreenState extends State<CalendarScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // --- ▼▼▼ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▼▼▼ ---
                   Text(
-                    _currentTemp,
+                    isToday ? _currentTemp : _skyCondition,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    _skyCondition,
-                    style: TextStyle(color: Colors.grey[800], fontSize: 14),
-                  ),
+                  // --- ▲▲▲ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▲▲▲ ---
+
+                  // --- ▼▼▼ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▼▼▼ ---
+                  if (isToday)
+                    Text(
+                      _skyCondition,
+                      style: TextStyle(color: Colors.grey[800], fontSize: 14),
+                    ),
+                  // --- ▲▲▲ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▲▲▲ ---
                 ],
               ),
             ],

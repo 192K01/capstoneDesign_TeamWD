@@ -904,44 +904,6 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
     );
   }
 
-  Widget _buildTodayScheduleSection() {
-    const int maxDisplayCount = 4;
-    final int remainingCount = _todaySchedules.length - maxDisplayCount;
-
-    if (_todaySchedules.isEmpty) {
-      return const Center(child: Text('오늘 일정이 없습니다.'));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ..._todaySchedules.take(maxDisplayCount).map((schedule) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2.0),
-            child: _buildScheduleItem(schedule),
-          );
-        }).toList(),
-        if (remainingCount > 0) ...[
-          const Spacer(),
-          GestureDetector(
-            onTap: widget.onNavigateToCalendar,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.add, size: 16, color: Colors.black54),
-                const SizedBox(width: 4),
-                Text(
-                  '$remainingCount개 일정 더보기',
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ]
-      ],
-    );
-  }
-
   Widget _buildScheduleItem(Map<String, dynamic> schedule) {
     final String title = schedule['title'] ?? '제목 없음';
     final String startTime = schedule['startTime'] ?? '';
@@ -1047,78 +1009,78 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       ],
     );
   }
-
-  Widget _buildScheduleItem(Map<String, dynamic> schedule) {
-    final String title = schedule['title'] ?? '제목 없음';
-    final String startTime = schedule['startTime'] ?? '';
-    final String endTime = schedule['endTime'] ?? '';
-    final isTrueAllDay = startTime == '00:00' && endTime == '23:59';
-
-    String timeText;
-    try {
-      final startDate = DateTime.parse(schedule['startDate']);
-      final endDate = DateTime.parse(schedule['endDate']);
-      final today = DateTime.now();
-      final selectedDay = DateTime(today.year, today.month, today.day);
-
-      final isFirstDay = isSameDay(startDate, selectedDay);
-      final isLastDay = isSameDay(endDate, selectedDay);
-      final isMultiDay = !isSameDay(startDate, endDate);
-
-      if (isTrueAllDay) {
-        final startDateFormat = DateFormat('M. d');
-        final endDateFormat = DateFormat('M. d');
-        timeText =
-            '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
-      } else if (isMultiDay) {
-        if (isLastDay) {
-          timeText = '00:00 - $endTime';
-        } else if (isFirstDay) {
-          timeText = '$startTime 부터';
-        } else {
-          timeText = "하루종일";
-        }
-      } else {
-        timeText = '$startTime - $endTime';
-      }
-    } catch (e) {
-      timeText = "시간 정보 없음";
-    }
-
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 24,
-          decoration: BoxDecoration(
-            color: Colors.lightBlue,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                timeText,
-                style: const TextStyle(color: Colors.grey, fontSize: 10),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 }
+
+// Widget _buildScheduleItem(Map<String, dynamic> schedule) {
+//   final String title = schedule['title'] ?? '제목 없음';
+//   final String startTime = schedule['startTime'] ?? '';
+//   final String endTime = schedule['endTime'] ?? '';
+//   final isTrueAllDay = startTime == '00:00' && endTime == '23:59';
+//
+//   String timeText;
+//   try {
+//     final startDate = DateTime.parse(schedule['startDate']);
+//     final endDate = DateTime.parse(schedule['endDate']);
+//     final today = DateTime.now();
+//     final selectedDay = DateTime(today.year, today.month, today.day);
+//
+//     final isFirstDay = isSameDay(startDate, selectedDay);
+//     final isLastDay = isSameDay(endDate, selectedDay);
+//     final isMultiDay = !isSameDay(startDate, endDate);
+//
+//     if (isTrueAllDay) {
+//       final startDateFormat = DateFormat('M. d');
+//       final endDateFormat = DateFormat('M. d');
+//       timeText =
+//       '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
+//     } else if (isMultiDay) {
+//       if (isLastDay) {
+//         timeText = '00:00 - $endTime';
+//       } else if (isFirstDay) {
+//         timeText = '$startTime 부터';
+//       } else {
+//         timeText = "하루종일";
+//       }
+//     } else {
+//       timeText = '$startTime - $endTime';
+//     }
+//   } catch (e) {
+//     timeText = "시간 정보 없음";
+//   }
+//
+//   return Row(
+//     children: [
+//       Container(
+//         width: 4,
+//         height: 24,
+//         decoration: BoxDecoration(
+//           color: Colors.lightBlue,
+//           borderRadius: BorderRadius.circular(2),
+//         ),
+//       ),
+//       const SizedBox(width: 8),
+//       Expanded(
+//         child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Text(
+//               title,
+//               style: const TextStyle(
+//                 fontWeight: FontWeight.bold,
+//                 fontSize: 13,
+//               ),
+//               overflow: TextOverflow.ellipsis,
+//             ),
+//             Text(
+//               timeText,
+//               style: const TextStyle(color: Colors.grey, fontSize: 10),
+//             ),
+//           ],
+//         ),
+//       ),
+//     ],
+//   );
+// }
 
 class RecommendationSection extends StatelessWidget {
   final String title;

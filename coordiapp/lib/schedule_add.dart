@@ -566,68 +566,6 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
     );
   }
 
-  Widget _buildParticipantsSection() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.people_outline, size: 24),
-                  SizedBox(width: 12),
-                  Text('참가자', style: TextStyle(fontSize: 16)),
-                ],
-              ),
-              IconButton(
-                icon: Icon(Icons.add, color: Colors.grey[600]),
-                onPressed: _showAddParticipantDialog,
-              ),
-            ],
-          ),
-          _participants.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 4.0, left: 36.0),
-                  child: Text(
-                    '참가자 없음',
-                    style: TextStyle(color: Colors.grey[700], fontSize: 14),
-                  ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Wrap(
-                    spacing: 8.0,
-                    runSpacing: 4.0,
-                    children: _participants
-                        .map(
-                          (email) => Chip(
-                            label: Text(email),
-                            labelStyle: const TextStyle(color: Colors.black),
-                            backgroundColor: Colors.white,
-                            deleteIcon: const Icon(Icons.close, size: 18),
-                            onDeleted: () {
-                              setState(() {
-                                _participants.remove(email);
-                              });
-                            },
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDescriptionInput() {
     return Container(
       padding: const EdgeInsets.all(16.0),

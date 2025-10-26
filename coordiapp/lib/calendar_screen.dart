@@ -1,31 +1,39 @@
+// 📂 lib/calendar_screen.dart
+
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http; // http 패키지 import 확인
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'dart:convert';
-import '../data/database_helper.dart'; // 데이터베이스 헬퍼 import
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
+import 'schedule_add.dart'; // 일정 추가 화면 import
+import 'package:flutter/cupertino.dart'; // CupertinoDatePicker 등을 위해 추가
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
   @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
+  CalendarScreenState createState() => CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  List<Map<String, dynamic>> _scheduleData = []; // 타입을 명확히 지정
+  List<Map<String, dynamic>> _allSchedules = [];
+  List<Map<String, dynamic>> _selectedDaySchedules = [];
   bool _isLoading = true;
-
-  final dbHelper = DatabaseHelper.instance;
+  bool _isWeatherLoading = false;
 
   String _dateString = "";
   String _currentTemp = "";
   String _skyCondition = "로딩 중...";
   IconData _skyIcon = Icons.cloud_outlined;
+  String? _minTemp;
+  String? _maxTemp;
+
+  Position? _currentPosition;
 
   @override
   void initState() {
@@ -34,12 +42,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _loadInitialData();
   }
 
+  Future<void> refreshData() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+    await _loadSchedulesFromServer();
+    if (mounted) {
+      await _onDaySelected(_selectedDay ?? DateTime.now(), _focusedDay);
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   Future<void> _loadInitialData() async {
-    await Future.wait([
-      _loadSchedulesFromDb(),
-      _setDateString(),
-      _fetchWeather(),
-    ]);
+    await _loadSchedulesFromServer();
+    try {
+      _currentPosition = await _getCurrentLocation();
+    } catch (e) {
+      if (mounted) setState(() => _skyCondition = e.toString());
+    }
+    await _onDaySelected(_selectedDay!, _focusedDay);
     if (mounted) {
       setState(() {
         _isLoading = false;
@@ -47,26 +72,161 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // DB에서 스케줄 데이터를 불러오는 함수
-  Future<void> _loadSchedulesFromDb() async {
-    final data = await dbHelper.getSchedules();
+  Future<void> _loadSchedulesFromServer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+
+    if (userEmail == null) {
+      if (mounted) {
+        setState(() {
+          _allSchedules = [];
+        });
+      }
+      return;
+    }
+
+    const serverIp = '3.36.66.130'; // 실제 서버 IP로 변경하세요
+    final url = Uri.parse('http://$serverIp:5000/schedule/$userEmail');
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(utf8.decode(response.bodyBytes));
+        if (mounted) {
+          setState(() {
+            _allSchedules = List<Map<String, dynamic>>.from(data);
+            _filterSchedules(_selectedDay ?? DateTime.now());
+          });
+        }
+      } else {
+        debugPrint('Failed to load schedules: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('Error loading schedules: $e');
+    }
+  }
+
+  void _filterSchedules(DateTime selectedDate) {
+    _selectedDaySchedules = _allSchedules.where((schedule) {
+      if (schedule['startDate'] == null || schedule['endDate'] == null) {
+        return false;
+      }
+      try {
+        final startDate = DateTime.parse(schedule['startDate']);
+        final endDate = DateTime.parse(schedule['endDate']);
+
+        final normalizedSelectedDate = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+        );
+        final normalizedStartDate = DateTime(
+          startDate.year,
+          startDate.month,
+          startDate.day,
+        );
+        final normalizedEndDate = DateTime(
+          endDate.year,
+          endDate.month,
+          endDate.day,
+        );
+
+        return (normalizedSelectedDate.isAtSameMomentAs(normalizedStartDate) ||
+                normalizedSelectedDate.isAfter(normalizedStartDate)) &&
+            (normalizedSelectedDate.isAtSameMomentAs(normalizedEndDate) ||
+                normalizedSelectedDate.isBefore(normalizedEndDate));
+      } catch (e) {
+        return false;
+      }
+    }).toList();
+
+    _selectedDaySchedules.sort((a, b) {
+      int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
+        final startDate = DateTime.parse(schedule['startDate']);
+        final endDate = DateTime.parse(schedule['endDate']);
+        final selectedDay = DateTime(
+          selected.year,
+          selected.month,
+          selected.day,
+        );
+
+        final isTrueAllDay =
+            schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
+        final isFirstDay = isSameDay(startDate, selectedDay);
+        final isLastDay = isSameDay(endDate, selectedDay);
+        final isMultiDay = !isSameDay(startDate, endDate);
+
+        if (isTrueAllDay) return 1;
+        if (isMultiDay && !isFirstDay && !isLastDay) return 1;
+        if (isMultiDay && isLastDay) return 2;
+        return 3;
+      }
+
+      final typeA = getScheduleType(a, selectedDate);
+      final typeB = getScheduleType(b, selectedDate);
+
+      if (typeA != typeB) {
+        return typeA.compareTo(typeB);
+      }
+
+      final startTimeA = a['startTime'] ?? '00:00';
+      final startTimeB = b['startTime'] ?? '00:00';
+      int compare = startTimeA.compareTo(startTimeB);
+      if (compare != 0) {
+        return compare;
+      }
+
+      return 0;
+    });
+  }
+
+  Future<void> _setDateString(DateTime date) async {
+    _dateString = DateFormat('M. d. E', 'ko_KR').format(date);
+  }
+
+  Future<void> _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
+    setState(() {
+      _selectedDay = selectedDay;
+      _focusedDay = focusedDay;
+      _isWeatherLoading = true;
+      _currentTemp = "";
+      _skyCondition = "로딩 중...";
+      _minTemp = null;
+      _maxTemp = null;
+      _filterSchedules(selectedDay);
+      _setDateString(selectedDay);
+    });
+
+    if (_currentPosition != null) {
+      await _fetchWeather(_currentPosition!, selectedDay);
+    }
+
     if (mounted) {
       setState(() {
-        _scheduleData = data;
+        _isWeatherLoading = false;
       });
     }
   }
 
-  Future<void> _setDateString() async {
-    _dateString = DateFormat('M. d. E', 'ko_KR').format(DateTime.now());
-  }
+  Future<void> _fetchWeather(Position position, DateTime date) async {
+    // --- ▼▼▼ [수정] 날짜 비교 기준을 명확하게 변경 (자정 기준) ▼▼▼ ---
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selected = DateTime(date.year, date.month, date.day);
 
-  Future<void> _fetchWeather() async {
-    try {
-      final position = await _getCurrentLocation();
-      await _fetchCurrentWeather(position.latitude, position.longitude);
-    } catch (e) {
-      if (mounted) setState(() => _skyCondition = e.toString());
+    final bool isToday = selected.isAtSameMomentAs(today);
+    // --- ▲▲▲ [수정] 날짜 비교 기준을 명확하게 변경 (자정 기준) ▲▲▲ ---
+
+    if (isToday) {
+      await Future.wait([
+        _fetchTodayWeather(position.latitude, position.longitude),
+        _fetchMinMaxTemp(position.latitude, position.longitude, date),
+      ]);
+    } else {
+      await Future.wait([
+        _fetchFutureForecast(position.latitude, position.longitude, date),
+        _fetchMinMaxTemp(position.latitude, position.longitude, date),
+      ]);
     }
   }
 
@@ -78,21 +238,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         return Future.error('위치 권한 거부');
+      }
     }
-    if (permission == LocationPermission.deniedForever)
+    if (permission == LocationPermission.deniedForever) {
       return Future.error('위치 권한 영구 거부');
+    }
     return await Geolocator.getCurrentPosition();
   }
 
-  Future<void> _fetchCurrentWeather(double lat, double lng) async {
+  Future<void> _fetchTodayWeather(double lat, double lng) async {
     try {
-      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg'; // 기상청 API 키
+      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
       final now = DateTime.now();
       DateTime targetTime = now.subtract(const Duration(minutes: 45));
       String baseDate = DateFormat('yyyyMMdd').format(targetTime);
-      String baseTime = '${DateFormat('HH').format(targetTime)}30';
+      String baseTime = DateFormat('HH').format(targetTime) + '30';
+
       final gridCoords = _convertToGrid(lat, lng);
       final nx = gridCoords['x'];
       final ny = gridCoords['y'];
@@ -100,7 +263,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst'
         '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
-
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -133,6 +295,103 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _skyCondition = "오류 발생");
+    }
+  }
+
+  Future<void> _fetchFutureForecast(
+    double lat,
+    double lng,
+    DateTime date,
+  ) async {
+    try {
+      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
+      // --- ▼▼▼ [수정] 어제 날짜를 위해 base_date를 'date'로 설정 (기존 유지) ▼▼▼ ---
+      final baseDate = DateFormat('yyyyMMdd').format(date);
+      const baseTime = '0200'; // 02시 발표 자료가 그날 예보를 포함
+      // --- ▲▲▲ [수정] 어제 날짜를 위해 base_date를 'date'로 설정 (기존 유지) ▲▲▲ ---
+      final gridCoords = _convertToGrid(lat, lng);
+      final nx = gridCoords['x'];
+      final ny = gridCoords['y'];
+      final url = Uri.parse(
+        'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
+        '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+      );
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['response']['header']['resultCode'] == '00') {
+          final items = data['response']['body']['items']['item'] as List;
+          Map<String, String> weatherData = {};
+
+          for (var item in items) {
+            // '1200' (정오 12시) 예보, *해당 날짜(baseDate)*에 대한 것
+            if (item['fcstDate'] == baseDate && item['fcstTime'] == '1200') {
+              weatherData[item['category']] = item['fcstValue'];
+            }
+          }
+
+          // --- ▼▼▼ [수정] T3H가 없으면 TMP로 대체 ▼▼▼ ---
+          String temp = weatherData['T3H'] ?? ''; // 3시간 기온
+          if (temp.isEmpty) {
+            temp = weatherData['TMP'] ?? ''; // 1시간 기온(TMP)으로 대체
+          }
+          // --- ▲▲▲ [수정] T3H가 없으면 TMP로 대체 ▲▲▲ ---
+          String sky = weatherData['SKY'] ?? '';
+          String pty = weatherData['PTY'] ?? '';
+
+          if (temp.isNotEmpty && mounted) {
+            final ptyString = _getPtyString(pty);
+            final skyString = _getSkyString(sky);
+            setState(() {
+              _currentTemp = "${double.parse(temp).toStringAsFixed(1)}°";
+              _skyCondition = ptyString.isNotEmpty ? ptyString : skyString;
+              _skyIcon = _getWeatherIcon(sky, pty);
+            });
+          } else {
+            if (mounted) setState(() => _skyCondition = "예보 없음");
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _skyCondition = "예보 오류");
+      debugPrint("미래 예보 API 오류: $e");
+    }
+  }
+
+  Future<void> _fetchMinMaxTemp(double lat, double lng, DateTime date) async {
+    try {
+      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
+      final baseDate = DateFormat('yyyyMMdd').format(date);
+      const baseTime = '0200';
+      final gridCoords = _convertToGrid(lat, lng);
+      final nx = gridCoords['x'];
+      final ny = gridCoords['y'];
+      final url = Uri.parse(
+        'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
+        '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+      );
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['response']['header']['resultCode'] == '00') {
+          final items = data['response']['body']['items']['item'] as List;
+          String tmn = '', tmx = '';
+          for (var item in items) {
+            if (item['fcstDate'] == baseDate) {
+              if (item['category'] == 'TMN') tmn = item['fcstValue'];
+              if (item['category'] == 'TMX') tmx = item['fcstValue'];
+            }
+          }
+          if (tmn.isNotEmpty && tmx.isNotEmpty && mounted) {
+            setState(() {
+              _minTemp = "최저 ${double.parse(tmn).toStringAsFixed(1)}°";
+              _maxTemp = "최고 ${double.parse(tmx).toStringAsFixed(1)}°";
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("최저/최고기온 API 오류: $e");
     }
   }
 
@@ -224,14 +483,70 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return {'x': x, 'y': y};
   }
 
-  void _showScheduleDetails(Map<String, dynamic> schedule) {
-    showDialog(
+  Future<void> _deleteSchedule(int scheduleId) async {
+    const serverIp = '3.36.66.130';
+    final url = Uri.parse('http://$serverIp:5000/schedule/$scheduleId');
+
+    try {
+      final response = await http.delete(url);
+
+      if (mounted) {
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('일정이 삭제되었습니다.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pop();
+          refreshData();
+        } else {
+          final responseData = jsonDecode(response.body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('삭제 실패: ${responseData['message']}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('삭제 중 오류 발생: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showScheduleDetails(Map<String, dynamic> schedule) async {
+    await showDialog<bool>(
       context: context,
       barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.5),
       builder: (BuildContext context) {
-        return ScheduleDetailDialog(schedule: schedule);
+        return ScheduleDetailDialog(
+          schedule: schedule,
+          onDeleteConfirmed: () async {
+            await _deleteSchedule(schedule['schedule_id']);
+          },
+        );
       },
     );
+  }
+
+  void _navigateAndRefresh() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ScheduleAddScreen()),
+    );
+
+    if (result == true) {
+      refreshData();
+    }
   }
 
   @override
@@ -242,32 +557,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
         scrolledUnderElevation: 0,
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Icon(Icons.menu, color: Colors.black),
-            const Text(
-              'Calender',
-              style: TextStyle(
-                color: Color.fromARGB(255, 96, 21, 112),
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-              ),
-            ),
-            const Icon(Icons.notifications_outlined, color: Colors.black),
-          ],
+        leading: const IconButton(
+          icon: Icon(Icons.menu, color: Colors.black),
+          onPressed: null,
         ),
+        title: const Text(
+          'Calendar',
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.today, color: Colors.black),
+            onPressed: () => _onDaySelected(DateTime.now(), DateTime.now()),
+          ),
+          const IconButton(
+            icon: Icon(Icons.notifications_outlined, color: Colors.black),
+            onPressed: null,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildCalendar(),
-                const SizedBox(height: 24),
-                _buildScheduleHeader(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: _buildCalendar(),
+                ),
                 const SizedBox(height: 16),
-                _buildCombinedScheduleCard(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: _buildScheduleHeader(),
+                ),
+                const SizedBox(height: 0),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 3, 16, 16),
+                    children: [_buildCombinedScheduleCard()],
+                  ),
+                ),
               ],
             ),
     );
@@ -295,13 +629,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
           color: Colors.red,
           shape: BoxShape.circle,
         ),
+        markerDecoration: BoxDecoration(
+          color: Colors.lightBlue,
+          shape: BoxShape.circle,
+        ),
       ),
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-      onDaySelected: (selectedDay, focusedDay) {
-        setState(() {
-          _selectedDay = selectedDay;
-          _focusedDay = focusedDay;
-        });
+      onDaySelected: _onDaySelected,
+      eventLoader: (day) {
+        return _allSchedules.where((schedule) {
+          if (schedule['startDate'] == null || schedule['endDate'] == null) {
+            return false;
+          }
+          try {
+            final startDate = DateTime.parse(schedule['startDate']);
+            final endDate = DateTime.parse(schedule['endDate']);
+            final normalizedDay = DateTime.utc(day.year, day.month, day.day);
+            final normalizedStartDate = DateTime.utc(
+              startDate.year,
+              startDate.month,
+              startDate.day,
+            );
+            final normalizedEndDate = DateTime.utc(
+              endDate.year,
+              endDate.month,
+              endDate.day,
+            );
+            return (normalizedDay.isAtSameMomentAs(normalizedStartDate) ||
+                    normalizedDay.isAfter(normalizedStartDate)) &&
+                (normalizedDay.isAtSameMomentAs(normalizedEndDate) ||
+                    normalizedDay.isBefore(normalizedEndDate));
+          } catch (e) {
+            return false;
+          }
+        }).toList();
       },
     );
   }
@@ -311,10 +672,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         const Text(
-          "Today's schedule",
+          "Schedule",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        const Icon(Icons.add, color: Colors.black),
+        IconButton(
+          icon: const Icon(Icons.add, color: Colors.black),
+          onPressed: _navigateAndRefresh,
+        ),
       ],
     );
   }
@@ -340,11 +704,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Expanded(
             flex: 2,
             child: Column(
-              children: [
-                _buildDateWeatherCard(),
-                const SizedBox(height: 12),
-                _buildLooksCard(),
-              ],
+              children: [_buildDateWeatherCard(), _buildLooksCard()],
             ),
           ),
           const SizedBox(width: 16),
@@ -361,28 +721,79 @@ class _CalendarScreenState extends State<CalendarScreen> {
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        children: [
-          Text(
-            _dateString,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(_skyIcon, color: Colors.grey[800], size: 20),
-              const SizedBox(width: 8),
-              Text(
-                '$_currentTemp $_skyCondition',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[800], fontSize: 14),
-              ),
-            ],
-          ),
-        ],
-      ),
+      child: _isWeatherLoading
+          ? const SizedBox(
+              height: 100,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : Column(
+              children: [
+                Text(
+                  _dateString,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(_skyIcon, color: Colors.grey[800], size: 30),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _currentTemp,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _skyCondition,
+                          style: TextStyle(
+                            color: Colors.grey[800],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                if (_minTemp != null && _maxTemp != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _minTemp!,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.blue,
+                          ),
+                        ),
+                        Text(
+                          ' / ',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        Text(
+                          _maxTemp!,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 
@@ -396,10 +807,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
               'Looks',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            const Icon(Icons.add, size: 20),
+            IconButton(
+              onPressed: () {
+                /* TODO: Looks 추가 기능 */
+              },
+              icon: const Icon(Icons.add, size: 20),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
         Container(
           height: 170,
           decoration: BoxDecoration(
@@ -415,28 +830,68 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildScheduleList() {
-    if (_scheduleData.isEmpty) {
+    if (_selectedDaySchedules.isEmpty) {
       return const SizedBox(
-        height: 100, // 일정이 없을 때도 최소 높이를 주어 UI가 깨지지 않게 함
-        child: Center(child: Text('일정이 없습니다.')),
+        height: 100,
+        child: Center(child: Text('선택된 날짜에 일정이 없습니다.')),
       );
     }
 
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _scheduleData.length,
+      itemCount: _selectedDaySchedules.length,
       itemBuilder: (context, index) {
-        final schedule = _scheduleData[index];
-        Color itemColor = Colors.purple; // 기본 색상
+        final schedule = _selectedDaySchedules[index];
+        final location = (schedule['location'] as String?)?.isNotEmpty == true
+            ? schedule['location']
+            : '위치 정보 없음';
+        final startTime = schedule['startTime']?.toString() ?? '';
+        final endTime = schedule['endTime']?.toString() ?? '';
+        final startDateStr = schedule['startDate']?.toString() ?? '';
+        final endDateStr = schedule['endDate']?.toString() ?? '';
+
+        String dateTimeString;
+
+        try {
+          final selectedDate = _selectedDay!;
+          final startDate = DateTime.parse(startDateStr);
+          final endDate = DateTime.parse(endDateStr);
+
+          final isAllDay = (startTime == '00:00' && endTime == '23:59');
+          final isSingleDay = isSameDay(startDate, endDate);
+          final isFirstDay = isSameDay(selectedDate, startDate);
+          final isLastDay = isSameDay(selectedDate, endDate);
+
+          final formattedDate = DateFormat('yy.MM.dd').format(selectedDate);
+          if (isSingleDay) {
+            dateTimeString = isAllDay
+                ? '$formattedDate, 하루종일'
+                : '$startTime - $endTime';
+          } else {
+            if (isFirstDay) {
+              dateTimeString = isAllDay
+                  ? '$formattedDate, 하루종일'
+                  : '$startTime - 계속';
+            } else if (isLastDay) {
+              dateTimeString = isAllDay
+                  ? '$formattedDate, 하루종일'
+                  : '00:00 - $endTime';
+            } else {
+              dateTimeString = '하루종일';
+            }
+          }
+        } catch (e) {
+          dateTimeString = '시간 정보 없음';
+        }
 
         return GestureDetector(
           onTap: () => _showScheduleDetails(schedule),
           child: _buildScheduleItem(
-            itemColor,
+            Colors.lightBlue,
             schedule['title'].toString(),
-            schedule['startDate'].toString(),
-            schedule['location'].toString(),
+            dateTimeString,
+            location,
           ),
         );
       },
@@ -447,17 +902,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _buildScheduleItem(
     Color color,
     String title,
-    String date,
+    String dateTimeInfo,
     String location,
   ) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(width: 4, height: 50, color: color),
+        Container(
+          width: 4,
+          height: 50,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 title,
@@ -468,7 +931,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                date,
+                dateTimeInfo,
                 style: const TextStyle(color: Colors.black54, fontSize: 12),
               ),
               const SizedBox(height: 4),
@@ -482,19 +945,151 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ],
     );
   }
-}
+} // CalendarScreen 끝
 
-// 상세 일정 팝업 Dialog 위젯
 class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;
-  const ScheduleDetailDialog({super.key, required this.schedule});
+  final VoidCallback onDeleteConfirmed;
+
+  const ScheduleDetailDialog({
+    super.key,
+    required this.schedule,
+    required this.onDeleteConfirmed,
+  });
+
+  String _getAlarmText(String? unit, int? value) {
+    if (unit == null || value == null || unit == 'none') {
+      return '알림 없음';
+    }
+    switch (unit) {
+      case 'minutes':
+        return value == 0 ? '정시' : '$value분 전';
+      case 'hours':
+        return '$value시간 전';
+      case 'days':
+        return '$value일 전';
+      default:
+        return '알림 없음';
+    }
+  }
+
+  String _formatScheduleDateTime(Map<String, dynamic> schedule) {
+    final String? startDateStr = schedule['startDate'] as String?;
+    final String? endDateStr = schedule['endDate'] as String?;
+    final String? startTimeStr = schedule['startTime'] as String?;
+    final String? endTimeStr = schedule['endTime'] as String?;
+
+    if (startDateStr == null ||
+        endDateStr == null ||
+        startTimeStr == null ||
+        endTimeStr == null) {
+      return "날짜/시간 정보 없음";
+    }
+
+    try {
+      final startDate = DateTime.parse(startDateStr);
+      final endDate = DateTime.parse(endDateStr);
+
+      final isAllDay = (startTimeStr == '00:00' && endTimeStr == '23:59');
+      final isSingleDay = isSameDay(startDate, endDate);
+
+      final dateFormat = DateFormat('yy.MM.dd.(E)', 'ko_KR');
+      final dateTimeFormat = DateFormat('yy.MM.dd.(E) HH:mm', 'ko_KR');
+
+      if (isSingleDay) {
+        if (isAllDay) {
+          return '${dateFormat.format(startDate)} 하루 종일';
+        } else {
+          return '${dateFormat.format(startDate)} $startTimeStr - $endTimeStr';
+        }
+      } else {
+        if (isAllDay) {
+          return '${dateFormat.format(startDate)} - ${dateFormat.format(endDate)}';
+        } else {
+          final fullStartDate = DateTime.parse(
+            '${startDateStr.substring(0, 10)}T$startTimeStr',
+          );
+          final fullEndDate = DateTime.parse(
+            '${endDateStr.substring(0, 10)}T$endTimeStr',
+          );
+          return '${dateTimeFormat.format(fullStartDate)} - ${dateTimeFormat.format(fullEndDate)}';
+        }
+      }
+    } catch (e) {
+      return "날짜/시간 형식 오류";
+    }
+  }
+
+  Future<void> _showDeleteConfirmationDialog(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('일정 삭제'),
+          content: const SingleChildScrollView(
+            child: ListBody(children: <Widget>[Text('이 일정을 삭제할까요?')]),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('취소'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('확인', style: TextStyle(color: Colors.red)),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                onDeleteConfirmed();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final String title = (schedule['title'] as String?) ?? '제목 없음';
+    final String dateRange = _formatScheduleDateTime(schedule);
+    final String? locationName =
+        (schedule['location'] as String?)?.isNotEmpty == true
+        ? schedule['location'] as String
+        : null;
+    final String? locationAddress =
+        (schedule['locationAddress'] as String?)?.isNotEmpty == true
+        ? schedule['locationAddress'] as String
+        : null;
+    final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true
+        ? schedule['tpo1'] as String
+        : null;
+    final String? tpo2 = (schedule['tpo2'] as String?)?.isNotEmpty == true
+        ? schedule['tpo2'] as String
+        : null;
+    final String explanation = (schedule['explanation'] as String?) ?? '설명 없음';
+    final List<String> participants =
+        (schedule['participants'] as String?)
+            ?.split(',')
+            .where((s) => s.isNotEmpty)
+            .toList() ??
+        [];
+    final String alarmText = _getAlarmText(
+      schedule['alarmUnit'] as String?,
+      schedule['alarmValue'] as int?,
+    );
+
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.0)),
+      alignment: Alignment.bottomCenter,
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.only(bottom: 10, left: 10, right: 10),
       child: Container(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(30),
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -503,62 +1098,161 @@ class ScheduleDetailDialog extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Icon(Icons.delete_outline),
-                  const Text(
-                    '내 일정',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                  IconButton(
+                    onPressed: () => _showDeleteConfirmationDialog(context),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
+                  Column(
+                    children: [
+                      const Text(
+                        '내 일정',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        '기본일정',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ],
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 45,
+                      margin: const EdgeInsets.only(top: 4, right: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.lightBlue,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            dateRange,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        /* TODO: Edit schedule */
+                      },
+                      icon: const Icon(Icons.edit_outlined),
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(width: 5, height: 40, color: Colors.purple),
+                  Expanded(
+                    child: SizedBox(
+                      height: 110,
+                      child: _buildInfoCard('알림설정', [
+                        alarmText,
+                      ], Icons.notifications_outlined),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 110,
+                      child: _buildInfoCard(
+                        '참가자',
+                        participants,
+                        Icons.people_outline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (locationName != null) ...[
+                const SizedBox(height: 16),
+                _buildSectionCard(
+                  icon: Icons.location_on_outlined,
+                  title: locationName,
+                  subtitle: locationAddress,
+                ),
+              ],
+              if (tpo1 != null) ...[
+                const SizedBox(height: 16),
+                _buildSectionCard(
+                  icon: Icons.sell_outlined,
+                  title: tpo1,
+                  subtitle: tpo2,
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 232,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Text("Look 정보 없음"),
+                      ), // TODO: Add Look info
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          schedule['title'],
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        SizedBox(
+                          height: 110,
+                          child: _buildInfoCard('날씨', [
+                            "정보 없음",
+                          ], Icons.thermostat), // TODO: Add Weather info
                         ),
-                        Text(
-                          '${schedule['startDate']} - ${schedule['endDate']}',
-                          style: const TextStyle(color: Colors.grey),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 110,
+                          child: _buildInfoCard('설명', [
+                            explanation,
+                          ], Icons.notes),
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.edit_outlined),
                 ],
-              ),
-              const SizedBox(height: 20),
-
-              _buildDetailSection(title: '알림설정', content: '시작시간 알림\n10분 전 알림'),
-              _buildDetailSection(
-                title: '참가자',
-                content: 'ava9797@hs.ac.kr\nkdhok2285@hs.ac.kr',
-              ),
-              _buildDetailSection(title: '위치', content: schedule['location']),
-              _buildDetailSection(
-                title: 'TPO',
-                content: schedule['category'].toString(),
-              ),
-              _buildDetailSection(title: '날씨', content: '날씨 정보 불러오는 중...'),
-              _buildDetailSection(
-                title: '설명',
-                content: schedule['explanation'],
               ),
             ],
           ),
@@ -567,23 +1261,97 @@ class ScheduleDetailDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailSection({required String title, required String content}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+  Widget _buildInfoCard(String title, List<String> items, IconData icon) {
+    final validItems = items
+        .where((item) => item.isNotEmpty && item != '설명 없음')
+        .toList();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
+              color: Colors.grey[600],
               fontWeight: FontWeight.bold,
-              color: Colors.grey,
             ),
           ),
           const SizedBox(height: 8),
-          Text(content),
-          const SizedBox(height: 8),
-          const Divider(),
+          if (validItems.isEmpty)
+            Row(
+              children: [
+                Icon(icon, size: 16, color: Colors.grey[700]),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text("정보 없음", overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            )
+          else
+            ...validItems
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 16, color: Colors.grey[700]),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            item,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[800]),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (subtitle != null && subtitle.isNotEmpty)
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                ),
+            ],
+          ),
         ],
       ),
     );

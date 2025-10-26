@@ -71,8 +71,23 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
       'Sports Sandals',
     ],
   };
-
+  // 색상 옵션 Map
   final Map<String, List<String>> _colorOptions = {
+    // '상의': [
+    //   '화이트',
+    //   '화이트 계열',
+    //   '레드',
+    //   '핑크',
+    //   '오렌지',
+    //   '옐로우',
+    //   '그린',
+    //   '블루',
+    //   '네이비',
+    //   '블랙',
+    //   '그레이',
+    // ],
+    // '하의': ['연청', '진청', '베이지', '카키', '와인', '블랙', '화이트', '그레이'],
+    // '상의' 색상 옵션
     '상의': [
       '화이트',
       '화이트 계열',
@@ -85,8 +100,50 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
       '네이비',
       '블랙',
       '그레이',
+      '연청',
+      '진청',
+      '베이지',
+      '카키',
+      '와인',
     ],
-    '하의': ['연청', '진청', '베이지', '카키', '와인', '블랙', '화이트', '그레이'],
+    // '하의' 색상 옵션
+    '하의': [
+      '화이트',
+      '화이트 계열',
+      '레드',
+      '핑크',
+      '오렌지',
+      '옐로우',
+      '그린',
+      '블루',
+      '네이비',
+      '블랙',
+      '그레이',
+      '연청',
+      '진청',
+      '베이지',
+      '카키',
+      '와인',
+    ],
+    // '신발' 색상 옵션
+    '신발': [
+      '화이트',
+      '화이트 계열',
+      '레드',
+      '핑크',
+      '오렌지',
+      '옐로우',
+      '그린',
+      '블루',
+      '네이비',
+      '블랙',
+      '그레이',
+      '연청',
+      '진청',
+      '베이지',
+      '카키',
+      '와인',
+    ],
   };
 
   @override
@@ -298,55 +355,109 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     }
     // --- ▲▲▲ [추가] 저장된 사용자 이메일 불러오기 ▲▲▲ ---
 
-    final imagePathToSave = _processedImagePath ?? widget.imagePath;
+    final imagePathToUpload =
+        _processedImagePath ?? widget.imagePath; // 업로드할 이미지 경로
     final String memo = _memoController.text;
 
+    // --- ▼▼▼ [추가] 이미지 업로드 로직 ▼▼▼ ---
+    String? imageUrlOnServer; // 서버에 저장된 이미지 경로/URL
     try {
+      setState(() => _processingStatusText = '이미지 업로드 중...');
       const String serverIp = '3.36.66.130';
-      final uri = Uri.parse('http://$serverIp:5000/clothes');
-
-      final newCloth = {
-        'email': userEmail, // 이메일을 함께 보냅니다.
-        'name': name,
-        'subCategory': _selectedSubCategory,
-        'articleType': _selectedArticleType,
-        'color': _selectedColor,
-        'clothingImg': imagePathToSave,
-        'memo': memo,
-      };
-
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(newCloth),
+      final uploadUri = Uri.parse('http://$serverIp:5000/upload_image');
+      var request = http.MultipartRequest('POST', uploadUri);
+      request.files.add(
+        await http.MultipartFile.fromPath('image', imagePathToUpload),
       );
 
-      if (mounted) {
-        if (response.statusCode == 201) {
-          Navigator.pop(context, true);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('옷이 옷장에 저장되었습니다!')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('저장에 실패했습니다.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      var response = await request.send();
+
+      if (response.statusCode == 201) {
+        final responseBody = await response.stream.bytesToString();
+        final data = jsonDecode(responseBody);
+        imageUrlOnServer = data['image_url']; // 서버가 돌려준 경로/URL 저장
+      } else {
+        final errorBody = await response.stream.bytesToString(); // 오류 내용 확인
+        print("Upload failed: ${response.statusCode}, $errorBody");
+        throw Exception('이미지 업로드 실패 (${response.statusCode})');
       }
     } catch (e) {
-      debugPrint("저장 중 오류 발생: $e");
+      debugPrint("이미지 업로드 오류: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('네트워크 오류로 저장에 실패했습니다.'),
+            content: Text('이미지 업로드 실패. 저장을 중단합니다.'),
             backgroundColor: Colors.red,
           ),
         );
       }
+      // 이미 업로드 시작했으므로 로딩 상태는 유지하거나, 실패 처리 후 종료
+      if (mounted)
+        setState(() => _processingStatusText = '업로드 실패'); // 상태 텍스트 변경
+      // return; // 여기서 중단할지 여부 결정
     }
+    // --- ▲▲▲ [추가] 이미지 업로드 로직 ▲▲▲ ---
+
+    if (imageUrlOnServer != null) {
+      try {
+        if (mounted) setState(() => _processingStatusText = '옷 정보 저장 중...');
+        const String serverIp = '3.36.66.130';
+        final uri = Uri.parse('http://$serverIp:5000/clothes');
+
+        final newCloth = {
+          'email': userEmail,
+          'name': name,
+          'subCategory': _selectedSubCategory,
+          'articleType': _selectedArticleType,
+          'color': _selectedColor,
+          // --- ▼▼▼ [핵심 수정] 로컬 경로 대신 서버 URL/경로 저장 ▼▼▼ ---
+          'clothingImg': imageUrlOnServer,
+          // --- ▲▲▲ [핵심 수정] 로컬 경로 대신 서버 URL/경로 저장 ▲▲▲ ---
+          'memo': memo,
+        };
+
+        final response = await http.post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(newCloth),
+        );
+
+        if (mounted) {
+          if (response.statusCode == 201) {
+            Navigator.pop(context, true);
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('옷이 옷장에 저장되었습니다!')));
+          } else {
+            final errorData = jsonDecode(response.body);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '옷 정보 저장 실패: ${errorData['message'] ?? response.reasonPhrase}',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint("옷 정보 저장 중 오류 발생: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('네트워크 오류로 저장에 실패했습니다.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isProcessingImage = false); // 최종 로딩 종료
+      }
+    } else {
+      // 이미지 업로드 자체가 실패했으면 로딩 종료
+      if (mounted) setState(() => _isProcessingImage = false);
+    }
+    // --- ▲▲▲ [수정] 이미지 업로드가 성공했을 때만 옷 정보 저장 시도 ▲▲▲ ---
   }
 
   @override

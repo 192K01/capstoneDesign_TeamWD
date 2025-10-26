@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'schedule_add.dart'; // 일정 추가 화면 import
 import 'package:flutter/cupertino.dart'; // CupertinoDatePicker 등을 위해 추가
 
+
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
@@ -57,20 +58,48 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+
+  // --- ▼▼▼ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▼▼▼ ---
   Future<void> _loadInitialData() async {
-    await _loadSchedulesFromServer();
-    try {
-      _currentPosition = await _getCurrentLocation();
-    } catch (e) {
-      if (mounted) setState(() => _skyCondition = e.toString());
+    Position? fetchedPosition;
+    String? locationError;
+
+    // 1. 일정 로드와 위치 정보 가져오기를 병렬로 실행
+    final scheduleFuture = _loadSchedulesFromServer();
+    final locationFuture = _getCurrentLocation().then((pos) {
+      fetchedPosition = pos; // 성공 시 위치 저장
+    }).catchError((e) {
+      locationError = e.toString(); // 실패 시 에러 메시지 저장
+    });
+
+    // 2. 두 작업이 모두 완료될 때까지 대기
+    await Future.wait([scheduleFuture, locationFuture]);
+
+    // 3. (mounted 확인 후) 위치 정보 및 에러 상태 업데이트
+    if (mounted) {
+      setState(() {
+        if (fetchedPosition != null) {
+          _currentPosition = fetchedPosition;
+        }
+        if (locationError != null) {
+          _skyCondition = locationError!;
+        }
+      });
     }
+
+    // 4. 날씨 정보 로드 및 일정 필터링 실행
+    //    (_onDaySelected는 내부적으로 _currentPosition을 사용함)
     await _onDaySelected(_selectedDay!, _focusedDay);
+
+    // 5. 모든 초기 로드가 완료되었으므로 로딩 상태 해제
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
   }
+  // --- ▲▲▲ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▲▲▲ ---
+
 
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -115,24 +144,15 @@ class CalendarScreenState extends State<CalendarScreen> {
         final startDate = DateTime.parse(schedule['startDate']);
         final endDate = DateTime.parse(schedule['endDate']);
 
-        final normalizedSelectedDate = DateTime(
-          selectedDate.year,
-          selectedDate.month,
-          selectedDate.day,
-        );
-        final normalizedStartDate = DateTime(
-          startDate.year,
-          startDate.month,
-          startDate.day,
-        );
-        final normalizedEndDate = DateTime(
-          endDate.year,
-          endDate.month,
-          endDate.day,
-        );
+        final normalizedSelectedDate =
+        DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+        final normalizedStartDate =
+        DateTime(startDate.year, startDate.month, startDate.day);
+        final normalizedEndDate =
+        DateTime(endDate.year, endDate.month, endDate.day);
 
         return (normalizedSelectedDate.isAtSameMomentAs(normalizedStartDate) ||
-                normalizedSelectedDate.isAfter(normalizedStartDate)) &&
+            normalizedSelectedDate.isAfter(normalizedStartDate)) &&
             (normalizedSelectedDate.isAtSameMomentAs(normalizedEndDate) ||
                 normalizedSelectedDate.isBefore(normalizedEndDate));
       } catch (e) {
@@ -144,14 +164,9 @@ class CalendarScreenState extends State<CalendarScreen> {
       int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
         final startDate = DateTime.parse(schedule['startDate']);
         final endDate = DateTime.parse(schedule['endDate']);
-        final selectedDay = DateTime(
-          selected.year,
-          selected.month,
-          selected.day,
-        );
+        final selectedDay = DateTime(selected.year, selected.month, selected.day);
 
-        final isTrueAllDay =
-            schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
+        final isTrueAllDay = schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
         final isFirstDay = isSameDay(startDate, selectedDay);
         final isLastDay = isSameDay(endDate, selectedDay);
         final isMultiDay = !isSameDay(startDate, endDate);
@@ -179,6 +194,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       return 0;
     });
   }
+
 
   Future<void> _setDateString(DateTime date) async {
     _dateString = DateFormat('M. d. E', 'ko_KR').format(date);
@@ -221,7 +237,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       // D+0 (오늘): 초단기예보(현재) + 단기예보(최저/최고)
       await Future.wait([
         _fetchTodayWeather(position.latitude, position.longitude),
-        _fetchMinMaxTemp(position.latitude, position.longitude, date),
+        _fetchMinMaxTemp(position.latitude, position.longitude, date)
       ]);
     }
     // --- ▼▼▼ [수정] 과거 날짜(dayDifference < 0)도 API를 호출하도록 추가 ▼▼▼ ---
@@ -229,7 +245,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       // D+1, D+2 (미래) 또는 D-1... (과거): 단기예보(12시) + 단기예보(최저/최고)
       await Future.wait([
         _fetchFutureForecast(position.latitude, position.longitude, date),
-        _fetchMinMaxTemp(position.latitude, position.longitude, date),
+        _fetchMinMaxTemp(position.latitude, position.longitude, date)
       ]);
     }
     // --- ▲▲▲ [수정] 과거 날짜(dayDifference < 0)도 API를 호출하도록 추가 ▲▲▲ ---
@@ -279,7 +295,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst'
-        '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
+            '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -316,11 +332,7 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  Future<void> _fetchFutureForecast(
-    double lat,
-    double lng,
-    DateTime date,
-  ) async {
+  Future<void> _fetchFutureForecast(double lat, double lng, DateTime date) async {
     try {
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
 
@@ -329,9 +341,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       final today = DateTime(now.year, now.month, now.day);
       final selected = DateTime(date.year, date.month, date.day);
 
-      final targetDate = DateFormat(
-        'yyyyMMdd',
-      ).format(date); // 예보를 찾을 날짜 (fcstDate)
+      final targetDate = DateFormat('yyyyMMdd').format(date); // 예보를 찾을 날짜 (fcstDate)
       String baseDate;
       const baseTime = '0200';
 
@@ -464,67 +474,31 @@ class CalendarScreenState extends State<CalendarScreen> {
 
   String _getPtyString(String ptyCode) {
     switch (ptyCode) {
-      case '0':
-        return '';
-      case '1':
-        return '비';
-      case '2':
-        return '비/눈';
-      case '3':
-        return '눈';
-      case '4':
-        return '소나기';
-      case '5':
-        return '빗방울';
-      case '6':
-        return '빗방울/눈날림';
-      case '7':
-        return '눈날림';
-      default:
-        return '';
+      case '0': return ''; case '1': return '비'; case '2': return '비/눈';
+      case '3': return '눈'; case '4': return '소나기'; case '5': return '빗방울';
+      case '6': return '빗방울/눈날림'; case '7': return '눈날림';
+      default: return '';
     }
   }
-
   String _getSkyString(String skyCode) {
     switch (skyCode) {
-      case '1':
-        return '맑음';
-      case '3':
-        return '구름많음';
-      case '4':
-        return '흐림';
-      default:
-        return '정보 없음';
+      case '1': return '맑음'; case '3': return '구름많음'; case '4': return '흐림';
+      default: return '정보 없음';
     }
   }
-
   IconData _getWeatherIcon(String skyCode, String ptyCode) {
     if (ptyCode.isNotEmpty && ptyCode != '0') {
       switch (ptyCode) {
-        case '1':
-          return Icons.umbrella;
-        case '2':
-          return Icons.cloudy_snowing;
-        case '3':
-          return Icons.snowing;
-        case '4':
-          return Icons.thunderstorm;
-        default:
-          return Icons.grain;
+        case '1': return Icons.umbrella; case '2': return Icons.cloudy_snowing;
+        case '3': return Icons.snowing; case '4': return Icons.thunderstorm;
+        default: return Icons.grain;
       }
     }
     switch (skyCode) {
-      case '1':
-        return Icons.wb_sunny;
-      case '3':
-        return Icons.cloud;
-      case '4':
-        return Icons.cloud_queue;
-      default:
-        return Icons.help_outline;
+      case '1': return Icons.wb_sunny; case '3': return Icons.cloud;
+      case '4': return Icons.cloud_queue; default: return Icons.help_outline;
     }
   }
-
   Map<String, int> _convertToGrid(double lat, double lng) {
     const double RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0;
     const double OLON = 126.0, OLAT = 38.0;
@@ -560,30 +534,21 @@ class CalendarScreenState extends State<CalendarScreen> {
       if (mounted) {
         if (response.statusCode == 200) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('일정이 삭제되었습니다.'),
-              backgroundColor: Colors.green,
-            ),
+            const SnackBar(content: Text('일정이 삭제되었습니다.'), backgroundColor: Colors.green),
           );
           Navigator.of(context).pop();
           refreshData();
         } else {
           final responseData = jsonDecode(response.body);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('삭제 실패: ${responseData['message']}'),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text('삭제 실패: ${responseData['message']}'), backgroundColor: Colors.red),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('삭제 중 오류 발생: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('삭제 중 오류 발생: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -604,6 +569,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       },
     );
   }
+
 
   void _navigateAndRefresh() async {
     final result = await Navigator.push(
@@ -628,14 +594,7 @@ class CalendarScreenState extends State<CalendarScreen> {
           icon: Icon(Icons.menu, color: Colors.black),
           onPressed: null,
         ),
-        title: const Text(
-          'Calendar',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
-          ),
-        ),
+        title: const Text('Calendar', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22)),
         centerTitle: true,
         actions: [
           IconButton(
@@ -651,26 +610,28 @@ class CalendarScreenState extends State<CalendarScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: _buildCalendar(),
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: _buildScheduleHeader(),
+          ),
+          const SizedBox(height: 0),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 3, 16, 16),
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: _buildCalendar(),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: _buildScheduleHeader(),
-                ),
-                const SizedBox(height: 0),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 3, 16, 16),
-                    children: [_buildCombinedScheduleCard()],
-                  ),
-                ),
+                _buildCombinedScheduleCard(),
               ],
             ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -712,18 +673,12 @@ class CalendarScreenState extends State<CalendarScreen> {
             final startDate = DateTime.parse(schedule['startDate']);
             final endDate = DateTime.parse(schedule['endDate']);
             final normalizedDay = DateTime.utc(day.year, day.month, day.day);
-            final normalizedStartDate = DateTime.utc(
-              startDate.year,
-              startDate.month,
-              startDate.day,
-            );
-            final normalizedEndDate = DateTime.utc(
-              endDate.year,
-              endDate.month,
-              endDate.day,
-            );
+            final normalizedStartDate =
+            DateTime.utc(startDate.year, startDate.month, startDate.day);
+            final normalizedEndDate =
+            DateTime.utc(endDate.year, endDate.month, endDate.day);
             return (normalizedDay.isAtSameMomentAs(normalizedStartDate) ||
-                    normalizedDay.isAfter(normalizedStartDate)) &&
+                normalizedDay.isAfter(normalizedStartDate)) &&
                 (normalizedDay.isAtSameMomentAs(normalizedEndDate) ||
                     normalizedDay.isBefore(normalizedEndDate));
           } catch (e) {
@@ -771,7 +726,10 @@ class CalendarScreenState extends State<CalendarScreen> {
           Expanded(
             flex: 2,
             child: Column(
-              children: [_buildDateWeatherCard(), _buildLooksCard()],
+              children: [
+                _buildDateWeatherCard(),
+                _buildLooksCard(),
+              ],
             ),
           ),
           const SizedBox(width: 16),
@@ -797,84 +755,54 @@ class CalendarScreenState extends State<CalendarScreen> {
         borderRadius: BorderRadius.circular(12),
       ),
       child: _isWeatherLoading
-          ? const SizedBox(
-              height: 100,
-              child: Center(child: CircularProgressIndicator()),
-            )
+          ? const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()))
           : Column(
-              children: [
-                Text(
-                  _dateString,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+        children: [
+          Text(
+            _dateString,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(_skyIcon, color: Colors.grey[800], size: 30),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- ▼▼▼ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▼▼▼ ---
+                  Text(
+                    isToday ? _currentTemp : _skyCondition,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(_skyIcon, color: Colors.grey[800], size: 30),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // --- ▼▼▼ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▼▼▼ ---
-                        Text(
-                          isToday ? _currentTemp : _skyCondition,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        // --- ▲▲▲ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▲▲▲ ---
+                  // --- ▲▲▲ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▲▲▲ ---
 
-                        // --- ▼▼▼ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▼▼▼ ---
-                        if (isToday)
-                          Text(
-                            _skyCondition,
-                            style: TextStyle(
-                              color: Colors.grey[800],
-                              fontSize: 14,
-                            ),
-                          ),
-                        // --- ▲▲▲ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▲▲▲ ---
-                      ],
+                  // --- ▼▼▼ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▼▼▼ ---
+                  if (isToday)
+                    Text(
+                      _skyCondition,
+                      style: TextStyle(color: Colors.grey[800], fontSize: 14),
                     ),
-                  ],
-                ),
-                if (_minTemp != null && _maxTemp != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _minTemp!,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.blue,
-                          ),
-                        ),
-                        Text(
-                          ' / ',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey[700],
-                          ),
-                        ),
-                        Text(
-                          _maxTemp!,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+                  // --- ▲▲▲ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▲▲▲ ---
+                ],
+              ),
+            ],
+          ),
+          if (_minTemp != null && _maxTemp != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(_minTemp!, style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                  Text(' / ', style: TextStyle(fontSize: 10, color: Colors.grey[700])),
+                  Text(_maxTemp!, style: const TextStyle(fontSize: 10, color: Colors.red)),
+                ],
+              ),
             ),
+        ],
+      ),
     );
   }
 
@@ -884,15 +812,10 @@ class CalendarScreenState extends State<CalendarScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Looks',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+            const Text('Looks', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             IconButton(
-              onPressed: () {
-                /* TODO: Looks 추가 기능 */
-              },
-              icon: const Icon(Icons.add, size: 20),
+                onPressed: () { /* TODO: Looks 추가 기능 */},
+                icon: const Icon(Icons.add, size: 20)
             ),
           ],
         ),
@@ -924,9 +847,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       itemCount: _selectedDaySchedules.length,
       itemBuilder: (context, index) {
         final schedule = _selectedDaySchedules[index];
-        final location = (schedule['location'] as String?)?.isNotEmpty == true
-            ? schedule['location']
-            : '위치 정보 없음';
+        final location = (schedule['location'] as String?)?.isNotEmpty == true ? schedule['location'] : '위치 정보 없음';
         final startTime = schedule['startTime']?.toString() ?? '';
         final endTime = schedule['endTime']?.toString() ?? '';
         final startDateStr = schedule['startDate']?.toString() ?? '';
@@ -946,18 +867,12 @@ class CalendarScreenState extends State<CalendarScreen> {
 
           final formattedDate = DateFormat('yy.MM.dd').format(selectedDate);
           if (isSingleDay) {
-            dateTimeString = isAllDay
-                ? '$formattedDate, 하루종일'
-                : '$startTime - $endTime';
+            dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - $endTime';
           } else {
             if (isFirstDay) {
-              dateTimeString = isAllDay
-                  ? '$formattedDate, 하루종일'
-                  : '$startTime - 계속';
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '$startTime - 계속';
             } else if (isLastDay) {
-              dateTimeString = isAllDay
-                  ? '$formattedDate, 하루종일'
-                  : '00:00 - $endTime';
+              dateTimeString = isAllDay ? '$formattedDate, 하루종일' : '00:00 - $endTime';
             } else {
               dateTimeString = '하루종일';
             }
@@ -965,6 +880,7 @@ class CalendarScreenState extends State<CalendarScreen> {
         } catch (e) {
           dateTimeString = '시간 정보 없음';
         }
+
 
         return GestureDetector(
           onTap: () => _showScheduleDetails(schedule),
@@ -981,11 +897,11 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildScheduleItem(
-    Color color,
-    String title,
-    String dateTimeInfo,
-    String location,
-  ) {
+      Color color,
+      String title,
+      String dateTimeInfo,
+      String location,
+      ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -1003,23 +919,11 @@ class CalendarScreenState extends State<CalendarScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-              ),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const SizedBox(height: 4),
-              Text(
-                dateTimeInfo,
-                style: const TextStyle(color: Colors.black54, fontSize: 12),
-              ),
+              Text(dateTimeInfo, style: const TextStyle(color: Colors.black54, fontSize: 12)),
               const SizedBox(height: 4),
-              Text(
-                location,
-                style: const TextStyle(color: Colors.black54, fontSize: 12),
-              ),
+              Text(location, style: const TextStyle(color: Colors.black54, fontSize: 12)),
             ],
           ),
         ),
@@ -1027,6 +931,7 @@ class CalendarScreenState extends State<CalendarScreen> {
     );
   }
 } // CalendarScreen 끝
+
 
 class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;
@@ -1060,10 +965,7 @@ class ScheduleDetailDialog extends StatelessWidget {
     final String? startTimeStr = schedule['startTime'] as String?;
     final String? endTimeStr = schedule['endTime'] as String?;
 
-    if (startDateStr == null ||
-        endDateStr == null ||
-        startTimeStr == null ||
-        endTimeStr == null) {
+    if (startDateStr == null || endDateStr == null || startTimeStr == null || endTimeStr == null) {
       return "날짜/시간 정보 없음";
     }
 
@@ -1080,19 +982,17 @@ class ScheduleDetailDialog extends StatelessWidget {
       if (isSingleDay) {
         if (isAllDay) {
           return '${dateFormat.format(startDate)} 하루 종일';
-        } else {
+        }
+        else {
           return '${dateFormat.format(startDate)} $startTimeStr - $endTimeStr';
         }
       } else {
         if (isAllDay) {
           return '${dateFormat.format(startDate)} - ${dateFormat.format(endDate)}';
-        } else {
-          final fullStartDate = DateTime.parse(
-            '${startDateStr.substring(0, 10)}T$startTimeStr',
-          );
-          final fullEndDate = DateTime.parse(
-            '${endDateStr.substring(0, 10)}T$endTimeStr',
-          );
+        }
+        else {
+          final fullStartDate = DateTime.parse('${startDateStr.substring(0, 10)}T$startTimeStr');
+          final fullEndDate = DateTime.parse('${endDateStr.substring(0, 10)}T$endTimeStr');
           return '${dateTimeFormat.format(fullStartDate)} - ${dateTimeFormat.format(fullEndDate)}';
         }
       }
@@ -1109,7 +1009,11 @@ class ScheduleDetailDialog extends StatelessWidget {
         return AlertDialog(
           title: const Text('일정 삭제'),
           content: const SingleChildScrollView(
-            child: ListBody(children: <Widget>[Text('이 일정을 삭제할까요?')]),
+            child: ListBody(
+              children: <Widget>[
+                Text('이 일정을 삭제할까요?'),
+              ],
+            ),
           ),
           actions: <Widget>[
             TextButton(
@@ -1135,31 +1039,13 @@ class ScheduleDetailDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final String title = (schedule['title'] as String?) ?? '제목 없음';
     final String dateRange = _formatScheduleDateTime(schedule);
-    final String? locationName =
-        (schedule['location'] as String?)?.isNotEmpty == true
-        ? schedule['location'] as String
-        : null;
-    final String? locationAddress =
-        (schedule['locationAddress'] as String?)?.isNotEmpty == true
-        ? schedule['locationAddress'] as String
-        : null;
-    final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true
-        ? schedule['tpo1'] as String
-        : null;
-    final String? tpo2 = (schedule['tpo2'] as String?)?.isNotEmpty == true
-        ? schedule['tpo2'] as String
-        : null;
+    final String? locationName = (schedule['location'] as String?)?.isNotEmpty == true ? schedule['location'] as String : null;
+    final String? locationAddress = (schedule['locationAddress'] as String?)?.isNotEmpty == true ? schedule['locationAddress'] as String : null;
+    final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true ? schedule['tpo1'] as String : null;
+    final String? tpo2 = (schedule['tpo2'] as String?)?.isNotEmpty == true ? schedule['tpo2'] as String : null;
     final String explanation = (schedule['explanation'] as String?) ?? '설명 없음';
-    final List<String> participants =
-        (schedule['participants'] as String?)
-            ?.split(',')
-            .where((s) => s.isNotEmpty)
-            .toList() ??
-        [];
-    final String alarmText = _getAlarmText(
-      schedule['alarmUnit'] as String?,
-      schedule['alarmValue'] as int?,
-    );
+    final List<String> participants = (schedule['participants'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [];
+    final String alarmText = _getAlarmText(schedule['alarmUnit'] as String?, schedule['alarmValue'] as int?);
 
     return Dialog(
       alignment: Alignment.bottomCenter,
@@ -1180,22 +1066,13 @@ class ScheduleDetailDialog extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    onPressed: () => _showDeleteConfirmationDialog(context),
-                    icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _showDeleteConfirmationDialog(context),
+                      icon: const Icon(Icons.delete_outline)
                   ),
                   Column(
                     children: [
-                      const Text(
-                        '내 일정',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        '기본일정',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
+                      const Text('내 일정', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('기본일정', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                     ],
                   ),
                   IconButton(
@@ -1227,31 +1104,13 @@ class ScheduleDetailDialog extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Text(
-                            dateRange,
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
-                          ),
+                          Text(dateRange, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () {
-                        /* TODO: Edit schedule */
-                      },
-                      icon: const Icon(Icons.edit_outlined),
-                      constraints: const BoxConstraints(),
-                    ),
+                    IconButton(onPressed: (){ /* TODO: Edit schedule */}, icon: const Icon(Icons.edit_outlined), constraints: const BoxConstraints()),
                   ],
                 ),
               ),
@@ -1262,20 +1121,14 @@ class ScheduleDetailDialog extends StatelessWidget {
                   Expanded(
                     child: SizedBox(
                       height: 110,
-                      child: _buildInfoCard('알림설정', [
-                        alarmText,
-                      ], Icons.notifications_outlined),
+                      child: _buildInfoCard('알림설정', [alarmText], Icons.notifications_outlined),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: SizedBox(
                       height: 110,
-                      child: _buildInfoCard(
-                        '참가자',
-                        participants,
-                        Icons.people_outline,
-                      ),
+                      child: _buildInfoCard('참가자', participants, Icons.people_outline),
                     ),
                   ),
                 ],
@@ -1301,17 +1154,15 @@ class ScheduleDetailDialog extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Container(
-                      height: 232,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
-                        child: Text("Look 정보 없음"),
-                      ), // TODO: Add Look info
-                    ),
+                      child: Container(
+                        height: 232,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12)
+                        ),
+                        child: const Center(child: Text("Look 정보 없음")), // TODO: Add Look info
+                      )
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1319,22 +1170,18 @@ class ScheduleDetailDialog extends StatelessWidget {
                       children: [
                         SizedBox(
                           height: 110,
-                          child: _buildInfoCard('날씨', [
-                            "정보 없음",
-                          ], Icons.thermostat), // TODO: Add Weather info
+                          child: _buildInfoCard('날씨', ["정보 없음"], Icons.thermostat), // TODO: Add Weather info
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
                           height: 110,
-                          child: _buildInfoCard('설명', [
-                            explanation,
-                          ], Icons.notes),
+                          child: _buildInfoCard('설명', [explanation], Icons.notes),
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
+              )
             ],
           ),
         ),
@@ -1343,9 +1190,7 @@ class ScheduleDetailDialog extends StatelessWidget {
   }
 
   Widget _buildInfoCard(String title, List<String> items, IconData icon) {
-    final validItems = items
-        .where((item) => item.isNotEmpty && item != '설명 없음')
-        .toList();
+    final validItems = items.where((item) => item.isNotEmpty && item != '설명 없음').toList();
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1356,55 +1201,33 @@ class ScheduleDetailDialog extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(title, style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           if (validItems.isEmpty)
             Row(
               children: [
                 Icon(icon, size: 16, color: Colors.grey[700]),
                 const SizedBox(width: 8),
-                const Expanded(
-                  child: Text("정보 없음", overflow: TextOverflow.ellipsis),
-                ),
+                const Expanded(child: Text("정보 없음", overflow: TextOverflow.ellipsis)),
               ],
             )
           else
-            ...validItems
-                .map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4.0),
-                    child: Row(
-                      children: [
-                        Icon(icon, size: 16, color: Colors.grey[700]),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            item,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .toList(),
+            ...validItems.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4.0),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: Colors.grey[700]),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                ],
+              ),
+            )).toList(),
         ],
       ),
     );
   }
 
-  Widget _buildSectionCard({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-  }) {
+  Widget _buildSectionCard({required IconData icon, required String title, String? subtitle}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -1419,18 +1242,9 @@ class ScheduleDetailDialog extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
               if (subtitle != null && subtitle.isNotEmpty)
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                ),
+                Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             ],
           ),
         ],

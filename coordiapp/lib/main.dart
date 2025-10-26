@@ -58,7 +58,7 @@ class _MainScreenState extends State<MainScreen> {
   bool _isMenuOpen = false;
 
   final GlobalKey<ProfileScreenState> _profileScreenKey =
-      GlobalKey<ProfileScreenState>();
+  GlobalKey<ProfileScreenState>();
   final GlobalKey<CalendarScreenState> _calendarScreenKey =
       GlobalKey<CalendarScreenState>();
   final GlobalKey<_HomeScreenState> _homeScreenKey =
@@ -843,21 +843,14 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
         }).toList();
 
         todaySchedules.sort((a, b) {
-          int getScheduleType(
-            Map<String, dynamic> schedule,
-            DateTime selected,
-          ) {
+          int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
             final startDate = DateTime.parse(schedule['startDate']);
             final endDate = DateTime.parse(schedule['endDate']);
-            final selectedDay = DateTime(
-              selected.year,
-              selected.month,
-              selected.day,
-            );
+            final selectedDay =
+            DateTime(selected.year, selected.month, selected.day);
 
             final isTrueAllDay =
-                schedule['startTime'] == '00:00' &&
-                schedule['endTime'] == '23:59';
+                schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
             final isFirstDay = isSameDay(startDate, selectedDay);
             final isLastDay = isSameDay(endDate, selectedDay);
             final isMultiDay = !isSameDay(startDate, endDate);
@@ -924,7 +917,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst'
-        '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
+            '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
 
       final response = await http.get(url);
@@ -975,7 +968,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
 
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-        '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+            '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
       );
 
       final response = await http.get(url);
@@ -1113,6 +1106,10 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Column(
               children: [
                 Expanded(
                   flex: 2,
@@ -1214,22 +1211,94 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
+//                 const SizedBox(width: 16),
+//                 Expanded(
+//                   flex: 3,
+//                   child: Container(
+//                     padding: const EdgeInsets.symmetric(
+//                       vertical: 8.0,
+//                       horizontal: 12.0,
+//                     ),
+                const SizedBox(height: 8),
                 Expanded(
                   flex: 3,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8.0,
-                      horizontal: 12.0,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     decoration: BoxDecoration(
                       color: Colors.grey[200],
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: _buildTodayScheduleSection(),
+//                     child: _buildTodayScheduleSection(),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _skyIcon,
+                              size: 45,
+                              color: Colors.grey[800],
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentTemp,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  _skyCondition,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        if (_minTemp != null && _maxTemp != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6.0),
+                            child: Row(
+                              mainAxisAlignment:
+                              MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _minTemp!,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                                Text(
+                                  ' / ',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                Text(
+                                  _maxTemp!,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1257,8 +1326,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       if (isTrueAllDay) {
         final startDateFormat = DateFormat('M. d');
         final endDateFormat = DateFormat('M. d');
-        timeText =
-            '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
+        timeText = '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
       } else if (isMultiDay) {
         if (isLastDay) {
           timeText = '00:00 - $endTime';
@@ -1291,10 +1359,8 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
+                style:
+                const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
@@ -1346,6 +1412,77 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
     );
   }
 }
+
+// Widget _buildScheduleItem(Map<String, dynamic> schedule) {
+//   final String title = schedule['title'] ?? '제목 없음';
+//   final String startTime = schedule['startTime'] ?? '';
+//   final String endTime = schedule['endTime'] ?? '';
+//   final isTrueAllDay = startTime == '00:00' && endTime == '23:59';
+//
+//   String timeText;
+//   try {
+//     final startDate = DateTime.parse(schedule['startDate']);
+//     final endDate = DateTime.parse(schedule['endDate']);
+//     final today = DateTime.now();
+//     final selectedDay = DateTime(today.year, today.month, today.day);
+//
+//     final isFirstDay = isSameDay(startDate, selectedDay);
+//     final isLastDay = isSameDay(endDate, selectedDay);
+//     final isMultiDay = !isSameDay(startDate, endDate);
+//
+//     if (isTrueAllDay) {
+//       final startDateFormat = DateFormat('M. d');
+//       final endDateFormat = DateFormat('M. d');
+//       timeText =
+//       '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
+//     } else if (isMultiDay) {
+//       if (isLastDay) {
+//         timeText = '00:00 - $endTime';
+//       } else if (isFirstDay) {
+//         timeText = '$startTime 부터';
+//       } else {
+//         timeText = "하루종일";
+//       }
+//     } else {
+//       timeText = '$startTime - $endTime';
+//     }
+//   } catch (e) {
+//     timeText = "시간 정보 없음";
+//   }
+//
+//   return Row(
+//     children: [
+//       Container(
+//         width: 4,
+//         height: 24,
+//         decoration: BoxDecoration(
+//           color: Colors.lightBlue,
+//           borderRadius: BorderRadius.circular(2),
+//         ),
+//       ),
+//       const SizedBox(width: 8),
+//       Expanded(
+//         child: Column(
+//           crossAxisAlignment: CrossAxisAlignment.start,
+//           children: [
+//             Text(
+//               title,
+//               style: const TextStyle(
+//                 fontWeight: FontWeight.bold,
+//                 fontSize: 13,
+//               ),
+//               overflow: TextOverflow.ellipsis,
+//             ),
+//             Text(
+//               timeText,
+//               style: const TextStyle(color: Colors.grey, fontSize: 10),
+//             ),
+//           ],
+//         ),
+//       ),
+//     ],
+//   );
+// }
 
 class RecommendationSection extends StatelessWidget {
   final String title;

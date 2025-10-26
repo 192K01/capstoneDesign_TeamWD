@@ -348,7 +348,9 @@ class CalendarScreenState extends State<CalendarScreen> {
       if (selected.isAfter(today)) {
         // [미래 날짜 D+1, D+2]
         // API 기준일(baseDate)은 '오늘'이어야 함
-        DateTime baseDateTime = now.hour < 2 ? now.subtract(const Duration(days: 1)) : now;
+        DateTime baseDateTime = now.hour < 2
+            ? now.subtract(const Duration(days: 1))
+            : now;
         baseDate = DateFormat('yyyyMMdd').format(baseDateTime);
       } else {
         // [과거 날짜 D-1...]
@@ -363,7 +365,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
         // --- ▼▼▼ [수정] numOfRows=1000으로 변경 ▼▼▼ ---
-            '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+        '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
         // --- ▲▲▲ [수정] numOfRows=1000으로 변경 ▲▲▲ ---
       );
       final response = await http.get(url);
@@ -415,14 +417,18 @@ class CalendarScreenState extends State<CalendarScreen> {
       final today = DateTime(now.year, now.month, now.day);
       final selected = DateTime(date.year, date.month, date.day);
 
-      final targetDate = DateFormat('yyyyMMdd').format(date); // 예보를 찾을 날짜 (fcstDate)
+      final targetDate = DateFormat(
+        'yyyyMMdd',
+      ).format(date); // 예보를 찾을 날짜 (fcstDate)
       String baseDate;
       const baseTime = '0200';
 
       if (selected.isAfter(today)) {
         // [미래 날짜 D+1, D+2]
         // API 기준일(baseDate)은 '오늘'이어야 함
-        DateTime baseDateTime = now.hour < 2 ? now.subtract(const Duration(days: 1)) : now;
+        DateTime baseDateTime = now.hour < 2
+            ? now.subtract(const Duration(days: 1))
+            : now;
         baseDate = DateFormat('yyyyMMdd').format(baseDateTime);
       } else {
         // [과거 날짜 D-1...]
@@ -437,7 +443,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
         // --- ▼▼▼ [수정] numOfRows=1000으로 변경 ▼▼▼ ---
-            '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+        '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
         // --- ▲▲▲ [수정] numOfRows=1000으로 변경 ▲▲▲ ---
       );
       final response = await http.get(url);

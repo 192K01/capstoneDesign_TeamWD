@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert'; // http 통신용
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http; // http 통신용
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ClothDetailScreen extends StatelessWidget {
   final Map<String, dynamic> cloth;
@@ -10,9 +11,7 @@ class ClothDetailScreen extends StatelessWidget {
 
   // 옷 삭제 함수
   Future<void> _deleteCloth(BuildContext context) async {
-    // ▼▼▼ [수정됨] 'cloth_id' -> 'id'로 변경 ▼▼▼
-    // cloth 맵에서 'id'를 가져옵니다.
-    final clothId = cloth['id'];
+    final clothId = cloth['cloth_id'];
     // ▲▲▲ [수정됨] 'cloth_id' -> 'id'로 변경 ▲▲▲
 
     if (clothId == null) {
@@ -20,11 +19,6 @@ class ClothDetailScreen extends StatelessWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')));
-      //
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')),
-//       );
-//       return;
     }
 
     // 삭제 확인 다이얼로그 표시

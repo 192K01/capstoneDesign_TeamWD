@@ -216,13 +216,14 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
   }
 
   Future<void> _loadColorData() async {
+    // assets/colors.json 파일을 로드합니다. (이 파일에 L, a, b 값이 있어야 합니다)
     final String jsonString = await rootBundle.loadString('assets/colors.json');
     final List<dynamic> jsonResponse = jsonDecode(jsonString);
     _colorStandard = jsonResponse.cast<Map<String, dynamic>>();
   }
 
   Future<String?> _removeBackground(String imagePath) async {
-    const String apiKey = 'HSmQd4FFG1ACQzMgTzU6iiyf'; // 실제 API 키로 교체하세요
+    const String apiKey = '4swzLhhnDRvT6fBADKaCkhFg'; // 실제 API 키로 교체하세요
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('https://api.remove.bg/v1.0/removebg'),
@@ -294,26 +295,101 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     return Color(dominantColor);
   }
 
+  // --- ▼▼▼ [수정] RGB-to-Lab 변환 헬퍼 함수 추가 (및 print 구문 추가) ▼▼▼ ---
+  List<double> _rgbToLab(Color color) {
+    // --- ▼▼▼ [요청] RGB 값 출력 ▼▼▼ ---
+    print('--- [Color Analysis] ---');
+    print('Input RGB: R=${color.red}, G=${color.green}, B=${color.blue}');
+    // --- ▲▲▲ [요청] RGB 값 출력 ▲▲▲ ---
+
+    // 1. RGB to XYZ
+    double r = color.red / 255.0;
+    double g = color.green / 255.0;
+    double b = color.blue / 255.0;
+
+    r = (r > 0.04045) ? pow((r + 0.055) / 1.055, 2.4).toDouble() : r / 12.92;
+    g = (g > 0.04045) ? pow((g + 0.055) / 1.055, 2.4).toDouble() : g / 12.92;
+    b = (b > 0.04045) ? pow((b + 0.055) / 1.055, 2.4).toDouble() : b / 12.92;
+
+    r *= 100.0;
+    g *= 100.0;
+    b *= 100.0;
+
+    // D65/2° Illuminant
+    double x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375;
+    double y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750;
+    double z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041;
+
+    // 2. XYZ to Lab
+    double refX = 95.047;
+    double refY = 100.000;
+    double refZ = 108.883;
+
+    x /= refX;
+    y /= refY;
+    z /= refZ;
+
+    x = (x > 0.008856)
+        ? pow(x, 1.0 / 3.0).toDouble()
+        : (7.787 * x) + (16.0 / 116.0);
+    y = (y > 0.008856)
+        ? pow(y, 1.0 / 3.0).toDouble()
+        : (7.787 * y) + (16.0 / 116.0);
+    z = (z > 0.008856)
+        ? pow(z, 1.0 / 3.0).toDouble()
+        : (7.787 * z) + (16.0 / 116.0);
+
+    double l = (116.0 * y) - 16.0;
+    double a = 500.0 * (x - y);
+    double bLab = 200.0 * (y - z);
+
+    // --- ▼▼▼ [요청] LAB 값 출력 ▼▼▼ ---
+    print(
+      'Calculated LAB: L=${l.toStringAsFixed(2)}, a=${a.toStringAsFixed(2)}, b=${bLab.toStringAsFixed(2)}',
+    );
+    print('------------------------');
+    // --- ▲▲▲ [요청] LAB 값 출력 ▲▲▲ ---
+
+    return [l, a, bLab];
+  }
+  // --- ▲▲▲ [수정] RGB-to-Lab 변환 헬퍼 함수 추가 (및 print 구문 추가) ▲▲▲ ---
+
+  // --- ▼▼▼ [수정] Lab 값으로 유클리드 거리 계산 ▼▼▼ ---
   String _findClosestColor(
     Color dominantColor,
     List<Map<String, dynamic>> colorStandard,
   ) {
+    // 1. 검정색 예외 처리 (Lab 변환 시 부정확할 수 있음)
     if (dominantColor.red < 50 &&
         dominantColor.green < 50 &&
         dominantColor.blue < 50) {
       return "블랙";
     }
+
+    // 2. 주조색(RGB)을 Lab 값으로 변환
+    final dominantLab = _rgbToLab(dominantColor);
+    final dominantL = dominantLab[0];
+    final dominantA = dominantLab[1];
+    final dominantB = dominantLab[2];
+
     String closestColorName = '분석 불가';
     double minDistance = double.infinity;
+
+    // 3. colorStandard (JSON)에 있는 Lab 값들과 거리 비교
     for (var colorData in colorStandard) {
-      final r = colorData['r'] as int;
-      final g = colorData['g'] as int;
-      final b = colorData['b'] as int;
+      // JSON에서 L, a, b 값을 가져옵니다.
+      // (num으로 받고 toDouble()을 사용하여 int/double 타입 모두 호환)
+      final stdL = (colorData['L'] as num).toDouble();
+      final stdA = (colorData['a'] as num).toDouble();
+      final stdB = (colorData['b'] as num).toDouble();
+
+      // 4. CIELAB 유클리드 거리 계산
       final distance = sqrt(
-        pow(dominantColor.red - r, 2) +
-            pow(dominantColor.green - g, 2) +
-            pow(dominantColor.blue - b, 2),
+        pow(dominantL - stdL, 2) +
+            pow(dominantA - stdA, 2) +
+            pow(dominantB - stdB, 2),
       );
+
       if (distance < minDistance) {
         minDistance = distance;
         closestColorName = colorData['name_ko'] as String;
@@ -321,6 +397,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     }
     return closestColorName;
   }
+  // --- ▲▲▲ [수정] Lab 값으로 유클리드 거리 계산 ▲▲▲ ---
 
   Future<void> _saveClothingItem() async {
     if (_isProcessingImage) {
@@ -591,8 +668,8 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
               ),
               onChanged:
                   (_selectedSubCategory != '상의' &&
-                          _selectedSubCategory != '하의' ||
-                      _isProcessingImage)
+                      _selectedSubCategory != '하의' &&
+                      _selectedSubCategory != '신발') // [수정] 신발도 포함
                   ? null
                   : (String? newValue) {
                       setState(() => _selectedColor = newValue);

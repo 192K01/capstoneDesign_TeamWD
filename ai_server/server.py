@@ -5,9 +5,11 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
 import numpy as np
+import pandas as pd
+import math
 
 from predict import load_model, preprocess_image, predict_cloth_type
 from database import init_db, DATABASE_NAME
@@ -31,6 +33,85 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 # --- ▲▲▲ [추가] 이미지 업로드를 위한 설정 ▲▲▲ ---
+
+# 날씨 규칙 정의
+WEATHER_RULES = {
+    'summer': { 'min_temp': 25, 'max_temp': 50, 'topwear': ['Tshirts', 'Dresses', 'Jumpsuit'], 'bottomwear': ['Shorts', 'Capris', 'Skirts'], 'shoes': ['Casual Shoes', 'Sandals', 'Flip Flops', 'Sports Sandals'] },
+    'spring/fall': { 'min_temp': 15, 'max_temp': 24, 'topwear': ['Shirts', 'Tshirts', 'Blazers', 'Sweaters', 'Jackets', 'Sweatshirts'], 'bottomwear': ['Jeans', 'Trousers', 'Skirts', 'Jeggings', 'Leggings'], 'shoes': ['Casual Shoes', 'Formal Shoes', 'Flats', 'Sneakers', 'Sports Shoes'] },
+    'early_winter': { 'min_temp': 5, 'max_temp': 14, 'topwear': ['Sweaters', 'Blazers', 'Jackets', 'Waistcoat', 'Sweatshirts'], 'bottomwear': ['Jeans', 'Trousers', 'Leggings'], 'shoes': ['Casual Shoes', 'Formal Shoes', 'Sneakers', 'Sports Shoes'] },
+    'mid_winter': { 'min_temp': -50, 'max_temp': 4, 'topwear': ['Sweaters', 'Jackets'], 'bottomwear': ['Jeans', 'Trousers', 'Leggings'], 'shoes': ['Casual Shoes', 'Formal Shoes', 'Sports Shoes'] }
+}
+
+def get_weather_season(temp):
+    """주어진 온도에 맞는 계절을 반환합니다."""
+    if temp is None: return None
+    for season, rules in WEATHER_RULES.items():
+        if rules['min_temp'] <= temp <= rules['max_temp']:
+            return season
+    print(f"Warning: Temperature {temp} does not fit any season rule.")
+    return None
+
+def filter_by_weather(df, temp):
+    """날씨에 맞는 옷들을 데이터프레임에서 필터링하여 반환합니다."""
+    season = get_weather_season(temp)
+    if not season:
+        print("온도 정보가 없거나 맞는 계절 규칙이 없어 날씨 필터링을 건너뜁니다.")
+        return df # 필터링 없이 원본 반환
+
+    print(f"날씨 필터 적용: 현재 계절 '{season}' (온도: {temp})")
+    season_rules = WEATHER_RULES[season]
+    # 각 카테고리별 허용 목록 가져오기 (없으면 빈 리스트)
+    allowed_tops = season_rules.get('topwear', [])
+    allowed_bottoms = season_rules.get('bottomwear', [])
+    allowed_shoes = season_rules.get('shoes', [])
+
+    # 상의, 하의, 신발 각각 필터링 후 합치기
+    filtered_df = pd.concat([
+        df[(df['subCategory'] == '상의') & (df['articleType'].isin(allowed_tops))],
+        df[(df['subCategory'] == '하의') & (df['articleType'].isin(allowed_bottoms))],
+        df[(df['subCategory'] == '신발') & (df['articleType'].isin(allowed_shoes))]
+    ]).copy() # .copy() 추가
+
+    print(f"날씨 필터링 후 남은 옷 개수: {len(filtered_df)}")
+    if filtered_df.empty:
+         print("Warning: 날씨 필터링 후 남은 옷이 없습니다.")
+    return filtered_df
+
+# TPO 점수 부여 규칙
+TPO_SCORES = {
+    'Casual & Daily': { 'Tshirts': 10, 'Shirts': 7, 'Sweaters': 8, 'Blazers': 3, 'Jackets': 6, 'Dresses': 9, 'Jumpsuit': 8, 'Waistcoat': 5, 'Jeans': 10, 'Shorts': 9, 'Skirts': 8, 'Track Pants': 9, 'Trousers': 6, 'Capris': 8, 'Leggings': 10, 'Casual Shoes': 10, 'Sports Shoes': 9, 'Flip Flops': 9, 'Sandals': 8, 'Formal Shoes': 2, 'Flats': 7, 'Heels': 3, 'Sports Sandals': 9 },
+    'Business & Formal': { 'Tshirts': 1, 'Shirts': 10, 'Sweaters': 7, 'Blazers': 10, 'Jackets': 9, 'Dresses': 10, 'Jumpsuit': 7, 'Waistcoat': 9, 'Jeans': 2, 'Shorts': 1, 'Skirts': 9, 'Track Pants': 1, 'Trousers': 10, 'Capris': 2, 'Leggings': 1, 'Casual Shoes': 1, 'Sports Shoes': 1, 'Flip Flops': 1, 'Sandals': 1, 'Formal Shoes': 10, 'Flats': 8, 'Heels': 10, 'Sports Sandals': 1 },
+    'Special Occasion & Date': { 'Tshirts': 4, 'Shirts': 9, 'Sweaters': 8, 'Blazers': 8, 'Jackets': 7, 'Dresses': 10, 'Jumpsuit': 9, 'Waistcoat': 6, 'Jeans': 5, 'Shorts': 3, 'Skirts': 10, 'Track Pants': 1, 'Trousers': 8, 'Capris': 4, 'Leggings': 2, 'Casual Shoes': 3, 'Sports Shoes': 2, 'Flip Flops': 2, 'Sandals': 5, 'Formal Shoes': 9, 'Flats': 8, 'Heels': 10, 'Sports Sandals': 2 },
+    'Active Day': { 'Tshirts': 10, 'Shirts': 2, 'Sweaters': 4, 'Blazers': 1, 'Jackets': 8, 'Dresses': 1, 'Jumpsuit': 3, 'Waistcoat': 7, 'Jeans': 2, 'Shorts': 10, 'Skirts': 1, 'Track Pants': 10, 'Trousers': 3, 'Capris': 9, 'Leggings': 10, 'Casual Shoes': 9, 'Sports Shoes': 10, 'Flip Flops': 8, 'Sandals': 7, 'Formal Shoes': 1, 'Flats': 2, 'Heels': 1, 'Sports Sandals': 10 }
+    # coordination.ipynb 와 TPO 이름 통일 필요 (예: '운동' -> 'Active Day')
+}
+
+# 색상 조합 규칙
+COLOR_RULES = {
+    'white': ['light blue', 'dark blue', 'beige', 'khaki', 'wine', 'black'],
+    'white series': ['light blue', 'dark blue', 'beige', 'khaki', 'wine', 'black'],
+    'red': ['beige', 'wine', 'black'],
+    'pink': ['light blue', 'dark blue', 'beige', 'khaki', 'wine', 'black'],
+    'orange': ['light blue', 'dark blue', 'beige', 'wine', 'black'],
+    'yellow': ['light blue', 'dark blue', 'beige', 'khaki', 'wine', 'black'],
+    'green': ['light blue', 'dark blue', 'beige', 'wine', 'black'],
+    'blue': ['dark blue', 'beige', 'wine', 'black'],
+    'navy': ['light blue', 'dark blue', 'beige', 'khaki', 'wine', 'black'],
+    'black': ['light blue', 'dark blue', 'beige', 'khaki', 'wine', 'black', 'white', 'white series', 'gray'], # 검정 하의에 흰색/회색 상의 허용
+    'gray': ['dark blue', 'beige', 'wine', 'black']
+    # coordination.ipynb 와 색상 이름 통일 필요 (예: '화이트' -> 'white')
+}
+
+def get_color_matches(top_color, bottom_color):
+    """상의와 하의 색상 조합 규칙에 맞는지 확인합니다."""
+    # 색상값이 없거나(None 또는 NaN) 규칙에 없으면 True 반환 (조합 허용)
+    if pd.isna(top_color) or top_color not in COLOR_RULES:
+        return True
+    if pd.isna(bottom_color):
+        return True
+    return bottom_color in COLOR_RULES.get(top_color, []) # .get 사용으로 키 에러 방지
+
+# --- ▲▲▲ coordination.ipynb 로직 추가 ▲▲▲ ---
 
 @app.route('/')
 def home():
@@ -108,56 +189,6 @@ def login():
     else:
         return jsonify({"message": "이메일 또는 비밀번호가 잘못되었습니다."}), 401
 
-# --- ▼▼▼ [수정] 옷 추가 API (user_id 찾기, 오류 처리 추가) ▼▼▼ ---
-@app.route('/clothes', methods=['POST'])
-def add_cloth():
-    data = request.get_json()
-    email = data.get('email')
-    name = data.get('name')
-    clothingImg = data.get('clothingImg')
-
-    if not email or not name:
-        return jsonify({"message": "이메일과 옷 이름은 필수입니다."}), 400
-    if not clothingImg:
-         return jsonify({"message": "이미지 경로가 없습니다."}), 400
-
-    conn = None # finally 에서 사용하기 위해 try 밖에 선언
-    try:
-        conn = sqlite3.connect(DATABASE_NAME)
-        conn.row_factory = sqlite3.Row # 결과를 dictionary처럼 사용하기 위해 추가
-        cursor = conn.cursor()
-
-        # 1. 이메일로 user_id를 찾습니다.
-        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-        user_row = cursor.fetchone()
-
-        if user_row is None:
-             # conn.close() 는 finally 에서 처리하므로 여기서 닫지 않음
-             return jsonify({"message": "사용자를 찾을 수 없습니다."}), 404
-        user_id = user_row['id']
-
-        # 2. 찾은 user_id와 함께 옷 정보를 저장합니다.
-        cursor.execute('''
-            INSERT INTO clothes (user_id, name, subCategory, articleType, color, clothingImg, memo)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, name, data.get('subCategory'), data.get('articleType'), data.get('color'), clothingImg, data.get('memo')))
-        conn.commit()
-        return jsonify({"message": "옷이 성공적으로 추가되었습니다."}), 201
-
-    except sqlite3.Error as e: # 데이터베이스 관련 오류 처리
-        if conn:
-            conn.rollback() # 오류 발생 시 롤백
-        print(f"Database error in add_cloth: {e}")
-        return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
-    except Exception as e: # 그 외 모든 예외 처리
-        print(f"An error occurred in add_cloth: {e}")
-        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
-    finally: # 성공하든 실패하든 항상 실행
-        if conn:
-            conn.close() # 데이터베이스 연결 종료
-# --- ▲▲▲ [수정] 옷 추가 API (user_id 찾기, 오류 처리 추가) ▲▲▲ ---
-
-
 @app.route('/clothes/<email>', methods=['GET'])
 def get_clothes(email):
     if not email:
@@ -192,7 +223,7 @@ def delete_cloth(cloth_id):
         cursor = conn.cursor()
 
         # 삭제하려는 옷이 존재하는지 확인
-        cursor.execute("SELECT id FROM clothes WHERE id = ?", (cloth_id,))
+        cursor.execute("SELECT cloth_id FROM clothes WHERE cloth_id = ?", (cloth_id,))
         cloth_exists = cursor.fetchone()
 
         if not cloth_exists:
@@ -200,7 +231,7 @@ def delete_cloth(cloth_id):
             return jsonify({"message": "삭제할 옷을 찾을 수 없습니다."}), 404
 
         # 옷 삭제 실행
-        cursor.execute("DELETE FROM clothes WHERE id = ?", (cloth_id,))
+        cursor.execute("DELETE FROM clothes WHERE cloth_id = ?", (cloth_id,))
         conn.commit()
 
         # 삭제된 행의 수가 0보다 크면 성공
@@ -408,6 +439,337 @@ def uploaded_file(filename):
     # UPLOAD_FOLDER에서 파일을 찾아 반환
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 # --- ▲▲▲ [추가] 업로드된 이미지 파일을 서빙하는 엔드포인트 ▲▲▲ ---
+
+# --- ▼▼▼ [수정] 옷 추가 API (user_id 찾기, 오류 처리 추가) ▼▼▼ ---
+@app.route('/clothes', methods=['POST'])
+def add_cloth():
+    data = request.get_json()
+    email = data.get('email')
+    name = data.get('name')
+    clothingImg = data.get('clothingImg')
+
+    if not email or not name:
+        return jsonify({"message": "이메일과 옷 이름은 필수입니다."}), 400
+    if not clothingImg:
+         return jsonify({"message": "이미지 경로가 없습니다."}), 400
+
+    conn = None # finally 에서 사용하기 위해 try 밖에 선언
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        conn.row_factory = sqlite3.Row # 결과를 dictionary처럼 사용하기 위해 추가
+        cursor = conn.cursor()
+
+        # 1. 이메일로 user_id를 찾습니다.
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        user_row = cursor.fetchone()
+
+        if user_row is None:
+             # conn.close() 는 finally 에서 처리하므로 여기서 닫지 않음
+             return jsonify({"message": "사용자를 찾을 수 없습니다."}), 404
+        user_id = user_row['id']
+
+        # 2. 찾은 user_id와 함께 옷 정보를 저장합니다.
+        cursor.execute('''
+            INSERT INTO clothes (user_id, name, subCategory, articleType, color, clothingImg, memo)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, name, data.get('subCategory'), data.get('articleType'), data.get('color'), clothingImg, data.get('memo')))
+        conn.commit()
+        return jsonify({"message": "옷이 성공적으로 추가되었습니다."}), 201
+
+    except sqlite3.Error as e: # 데이터베이스 관련 오류 처리
+        if conn:
+            conn.rollback() # 오류 발생 시 롤백
+        print(f"Database error in add_cloth: {e}")
+        return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
+    except Exception as e: # 그 외 모든 예외 처리
+        print(f"An error occurred in add_cloth: {e}")
+        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally: # 성공하든 실패하든 항상 실행
+        if conn:
+            conn.close() # 데이터베이스 연결 종료
+# --- ▲▲▲ [수정] 옷 추가 API (user_id 찾기, 오류 처리 추가) ▲▲▲ ---
+
+# --- ▼▼▼ [추가] DataFrame Row를 JSON 직렬화 가능한 dict로 변환하는 함수 ▼▼▼ ---
+def convert_row_to_serializable_dict(row):
+            if row is None:
+                return None
+            
+            serializable_dict = {}
+            row_dict = row.to_dict()
+            for key, value in row_dict.items():
+                if pd.isna(value):
+                    serializable_dict[key] = None
+                elif isinstance(value, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
+                    serializable_dict[key] = int(value)
+                elif isinstance(value, (np.float16, np.float32, np.float64)):
+                    serializable_dict[key] = float(value)
+                elif isinstance(value, (np.ndarray,)): # Numpy 배열 처리 (필요시)
+                    serializable_dict[key] = value.tolist() # 파이썬 리스트로 변환
+                elif isinstance(value, (np.bool_)):
+                    serializable_dict[key] = bool(value)
+                else:
+                    serializable_dict[key] = value # 나머지는 그대로 사용
+            return serializable_dict
+ # --- ▲▲▲ [추가] DataFrame Row를 JSON 직렬화 가능한 dict로 변환하는 함수 ▲▲▲ ---
+
+# --- ▼▼▼ [수정] 오늘의 코디 추천 API (DB 컬럼명 'cloth_id'로 수정) ▼▼▼ ---
+@app.route('/recommend_today', methods=['POST'])
+def recommend_today():
+    data = request.get_json()
+    email = data.get('email')
+    today_date_str = data.get('date')
+    temperature = data.get('temperature') # 앱에서 보낸 온도 받기
+
+    if not email or not today_date_str:
+        return jsonify({"message": "이메일과 날짜 정보가 필요합니다."}), 400
+
+    # 온도 데이터 처리
+    try:
+        temp_float = float(temperature) if temperature is not None else None
+    except (ValueError, TypeError):
+        print(f"Warning: Invalid temperature format received: {temperature}")
+        temp_float = None
+
+    conn = None
+    try:
+        today_date = datetime.strptime(today_date_str, '%Y-%m-%d').date()
+
+        conn = sqlite3.connect(DATABASE_NAME)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # 1. 사용자 ID 찾기
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        user_row = cursor.fetchone()
+        if user_row is None: return jsonify({"message": "사용자를 찾을 수 없습니다."}), 404
+        user_id = user_row['id']
+
+        # 2. 오늘 첫 일정의 TPO 찾기
+        cursor.execute("""
+            SELECT tpo1, tpo2 FROM schedule
+            WHERE user_id = ? AND date(start_date) = ?
+            ORDER BY start_time ASC LIMIT 1
+        """, (user_id, today_date_str))
+        schedule_row = cursor.fetchone()
+
+        tpo_mapping = {
+            '일상&캐주얼': 'Casual & Daily',
+            '비즈니스&포멀': 'Business & Formal',
+            '특별한 날&데이트': 'Special Occasion & Date',
+            '활동적인 날': 'Active Day'
+        }
+        today_tpo_raw = None
+        if schedule_row:
+            today_tpo_raw = schedule_row['tpo1'] if schedule_row['tpo1'] else schedule_row['tpo2']
+
+        today_tpo = tpo_mapping.get(today_tpo_raw, 'Casual & Daily')
+        if today_tpo not in TPO_SCORES:
+             print(f"Warning: Mapped TPO '{today_tpo}' (from '{today_tpo_raw}') not found. Using 'Casual & Daily'.")
+             today_tpo = 'Casual & Daily'
+
+        print(f"Determined TPO for {today_date_str}: {today_tpo}")
+
+        # 3. 사용자 옷 목록 가져오기 (DB 컬럼명 'cloth_id'로 수정)
+        # --- ▼▼▼ [핵심 수정] 'id' -> 'cloth_id'로 변경 ▼▼▼ ---
+        cursor.execute("SELECT cloth_id, name, subCategory, articleType, color, clothingImg FROM clothes WHERE user_id = ?", (user_id,))
+        # --- ▲▲▲ [핵심 수정] 'id' -> 'cloth_id'로 변경 ▲▲▲ ---
+        clothes_rows = cursor.fetchall()
+        if not clothes_rows: return jsonify({"message": "옷장에 등록된 옷이 없습니다."}), 404
+        user_clothes_df = pd.DataFrame([dict(row) for row in clothes_rows])
+
+        # 4. 날씨 필터링
+        weather_filtered_df = filter_by_weather(user_clothes_df, temp_float)
+        if weather_filtered_df.empty:
+            return jsonify({"message": f"{today_tpo}와 현재 날씨({temp_float}°C)에 맞는 옷이 옷장에 없습니다."}), 404
+
+        # 5. TPO 점수 적용
+        tpo_score_map = TPO_SCORES[today_tpo]
+        weather_filtered_df['articleType'] = weather_filtered_df['articleType'].fillna('')
+        weather_filtered_df['tpo_score'] = weather_filtered_df['articleType'].apply(lambda x: tpo_score_map.get(x, 0))
+
+        # 6. 카테고리 분리 및 필터링
+        topwear_df = weather_filtered_df[(weather_filtered_df['subCategory'] == '상의') & (weather_filtered_df['tpo_score'] > 0)].sort_values(by=['tpo_score', 'cloth_id'], ascending=[False, False])
+        bottomwear_df = weather_filtered_df[(weather_filtered_df['subCategory'] == '하의') & (weather_filtered_df['tpo_score'] > 0)].sort_values(by=['tpo_score', 'cloth_id'], ascending=[False, False])
+        shoes_df = weather_filtered_df[(weather_filtered_df['subCategory'] == '신발') & (weather_filtered_df['tpo_score'] > 0)].sort_values(by=['tpo_score', 'cloth_id'], ascending=[False, False])
+
+        if topwear_df.empty or bottomwear_df.empty:
+             return jsonify({"message": f"{today_tpo}와 날씨({temp_float}°C)에 맞는 상의 또는 하의가 없습니다."}), 404
+
+        # 7. 색상 조합 고려하여 최종 코디 추천
+        recommended_outfits_rows = []
+        MAX_ITEMS_PER_CATEGORY = 5
+        for _, top_row in topwear_df.head(MAX_ITEMS_PER_CATEGORY).iterrows():
+            for _, bottom_row in bottomwear_df.head(MAX_ITEMS_PER_CATEGORY).iterrows():
+                top_color = str(top_row['color']).lower() if pd.notna(top_row['color']) else None
+                bottom_color = str(bottom_row['color']).lower() if pd.notna(bottom_row['color']) else None
+
+                if get_color_matches(top_color, bottom_color):
+                    current_base_score = top_row['tpo_score'] + bottom_row['tpo_score']
+                    shoe_row = None
+                    current_score = current_base_score
+                    if not shoes_df.empty:
+                        shoe_row = shoes_df.iloc[0]
+                        current_score += shoe_row['tpo_score']
+                    recommended_outfits_rows.append((top_row, bottom_row, shoe_row, current_score))
+
+        if not recommended_outfits_rows:
+             return jsonify({"message": f"{today_tpo}와 날씨({temp_float}°C), 색상 조합에 맞는 추천 코디를 찾을 수 없습니다."}), 404
+
+        recommended_outfits_rows.sort(key=lambda x: x[3], reverse=True)
+        top_5_outfits_rows = recommended_outfits_rows[:5]
+
+        # 8. JSON 직렬화 가능한 dict 리스트로 변환
+        top_5_outfits_serializable = []
+        for top_r, bottom_r, shoes_r, score in top_5_outfits_rows:
+            outfit = {
+                'top': convert_row_to_serializable_dict(top_r),
+                'bottom': convert_row_to_serializable_dict(bottom_r),
+                'shoes': convert_row_to_serializable_dict(shoes_r),
+                'score': float(score)
+            }
+            top_5_outfits_serializable.append(outfit)
+
+        # 9. 코디 조합 저장 (DB 컬럼명 'cloth_id'로 수정)
+        if top_5_outfits_serializable:
+             try:
+                 best_outfit = top_5_outfits_serializable[0]
+                 # --- ▼▼▼ [핵심 수정] 'id' -> 'cloth_id'로 변경 ▼▼▼ ---
+                 top_id = best_outfit['top']['cloth_id'] if best_outfit.get('top') else None
+                 bottom_id = best_outfit['bottom']['cloth_id'] if best_outfit.get('bottom') else None
+                 shoes_id = best_outfit['shoes']['cloth_id'] if best_outfit.get('shoes') else None
+                 # --- ▲▲▲ [핵심 수정] 'id' -> 'cloth_id'로 변경 ▲▲▲ ---
+                 outfit_name = f"{today_date_str} {today_tpo} 추천"
+
+                 cursor.execute('''
+                     INSERT INTO outfits (user_id, name, top_cloth_id, bottom_cloth_id, shoes_cloth_id, tpo_category)
+                     VALUES (?, ?, ?, ?, ?, ?)
+                 ''', (user_id, outfit_name, top_id, bottom_id, shoes_id, today_tpo))
+                 conn.commit()
+                 print(f"Top recommended outfit saved for user {user_id} with TPO '{today_tpo}'")
+             except sqlite3.Error as db_err:
+                 if conn: conn.rollback()
+                 print(f"Error saving recommended outfit to DB: {db_err}")
+
+        # 10. 결과 반환
+        return jsonify({
+            "recommended_outfits_list": top_5_outfits_serializable,
+            "tpo": today_tpo
+        })
+
+    except sqlite3.Error as e: print(f"Database error in /recommend_today: {e}"); return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
+    except ValueError as e: print(f"Value error in /recommend_today: {e}"); return jsonify({"message": f"잘못된 입력값 오류: {e}"}), 400
+    except Exception as e: print(f"An error occurred in /recommend_today: {e}"); return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally:
+        if conn: conn.close()
+# --- ▲▲▲ [수정] 오늘의 코디 추천 API ▲▲▲ ---
+
+# --- ▼▼▼ [추가] 저장된 코디 목록(outfits)을 TPO별로 조회하는 API ▼▼▼ ---
+@app.route('/outfits/<email>', methods=['GET'])
+def get_user_outfits(email):
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # 1. 이메일로 user_id 찾기
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        user_row = cursor.fetchone()
+        if user_row is None:
+            return jsonify({"message": "사용자를 찾을 수 없습니다."}), 404
+        user_id = user_row['id']
+
+        # 2. 쿼리 파라미터에서 TPO 필터 값 가져오기
+        # (예: /outfits/aaa@aaa.com?tpo=Casual%20%26%20Daily)
+        tpo_filter = request.args.get('tpo')
+
+        # 3. SQL 쿼리 작성
+        # outfits 테이블(o)과 clothes 테이블(t, b, s)을 3번 JOIN
+        base_query = """
+            SELECT
+                o.outfit_id, o.name as outfit_name, o.tpo_category, o.created_at,
+                
+                -- 상의(top) 정보 (clothes 테이블 PK가 'cloth_id'인지 확인!)
+                t.cloth_id as top_cloth_id, t.name as top_name, t.clothingImg as top_clothingImg,
+                t.color as top_color, t.articleType as top_articleType, t.subCategory as top_subCategory,
+                
+                -- 하의(bottom) 정보
+                b.cloth_id as bottom_cloth_id, b.name as bottom_name, b.clothingImg as bottom_clothingImg,
+                b.color as bottom_color, b.articleType as bottom_articleType, b.subCategory as bottom_subCategory,
+                
+                -- 신발(shoes) 정보
+                s.cloth_id as shoes_cloth_id, s.name as shoes_name, s.clothingImg as shoes_clothingImg,
+                s.color as shoes_color, s.articleType as shoes_articleType, s.subCategory as shoes_subCategory
+                
+            FROM outfits o
+            LEFT JOIN clothes t ON o.top_cloth_id = t.cloth_id
+            LEFT JOIN clothes b ON o.bottom_cloth_id = b.cloth_id
+            LEFT JOIN clothes s ON o.shoes_cloth_id = s.cloth_id
+            WHERE o.user_id = ?
+        """
+        params = [user_id] # SQL 쿼리에 바인딩할 파라미터 리스트
+
+        # TPO 필터가 있으면 쿼리에 추가
+        if tpo_filter:
+            base_query += " AND o.tpo_category = ?"
+            params.append(tpo_filter)
+        
+        base_query += " ORDER BY o.created_at DESC" # 최신순 정렬
+
+        cursor.execute(base_query, tuple(params))
+        outfit_rows = cursor.fetchall()
+
+        # 4. 결과를 앱이 원하는 JSON 구조(중첩된 dict)로 포맷팅
+        outfits_list = []
+        for row in outfit_rows:
+            outfit = {
+                "outfit_id": row["outfit_id"],
+                "outfit_name": row["outfit_name"],
+                "tpo_category": row["tpo_category"],
+                "created_at": row["created_at"],
+                # 상의 정보가 있을 때(top_cloth_id가 NULL이 아닐 때)만 dict 생성
+                "top": {
+                    "cloth_id": row["top_cloth_id"],
+                    "name": row["top_name"],
+                    "clothingImg": row["top_clothingImg"],
+                    "color": row["top_color"],
+                    "articleType": row["top_articleType"],
+                    "subCategory": row["top_subCategory"]
+                } if row["top_cloth_id"] is not None else None,
+                # 하의 정보
+                "bottom": {
+                    "cloth_id": row["bottom_cloth_id"],
+                    "name": row["bottom_name"],
+                    "clothingImg": row["bottom_clothingImg"],
+                    "color": row["bottom_color"],
+                    "articleType": row["bottom_articleType"],
+                    "subCategory": row["bottom_subCategory"]
+                } if row["bottom_cloth_id"] is not None else None,
+                # 신발 정보
+                "shoes": {
+                    "cloth_id": row["shoes_cloth_id"],
+                    "name": row["shoes_name"],
+                    "clothingImg": row["shoes_clothingImg"],
+                    "color": row["shoes_color"],
+                    "articleType": row["shoes_articleType"],
+                    "subCategory": row["shoes_subCategory"]
+                } if row["shoes_cloth_id"] is not None else None
+            }
+            outfits_list.append(outfit)
+
+        # 5. 최종 JSON 리스트 반환
+        return jsonify(outfits_list)
+
+    except sqlite3.Error as e:
+        print(f"Error fetching outfits: {e}")
+        return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
+    except Exception as e:
+        print(f"An error occurred in /outfits/<email>: {e}")
+        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+# --- ▲▲▲ [추가] 저장된 코디 목록(outfits)을 TPO별로 조회하는 API ▲▲▲ ---
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

@@ -198,24 +198,42 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _fetchWeather(Position position, DateTime date) async {
-    // --- ▼▼▼ [수정] 날짜 비교 기준을 명확하게 변경 (자정 기준) ▼▼▼ ---
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final selected = DateTime(date.year, date.month, date.day);
 
     final bool isToday = selected.isAtSameMomentAs(today);
-    // --- ▲▲▲ [수정] 날짜 비교 기준을 명확하게 변경 (자정 기준) ▲▲▲ ---
+    // 오늘 날짜와의 차이(일)를 계산
+    final int dayDifference = selected.difference(today).inDays;
 
     if (isToday) {
+      // D+0 (오늘): 초단기예보(현재) + 단기예보(최저/최고)
       await Future.wait([
         _fetchTodayWeather(position.latitude, position.longitude),
         _fetchMinMaxTemp(position.latitude, position.longitude, date)
       ]);
-    } else {
+    }
+    // --- ▼▼▼ [수정] 과거 날짜(dayDifference < 0)도 API를 호출하도록 추가 ▼▼▼ ---
+    else if ((dayDifference > 0 && dayDifference <= 2) || (dayDifference < 0)) {
+      // D+1, D+2 (미래) 또는 D-1... (과거): 단기예보(12시) + 단기예보(최저/최고)
       await Future.wait([
         _fetchFutureForecast(position.latitude, position.longitude, date),
         _fetchMinMaxTemp(position.latitude, position.longitude, date)
       ]);
+    }
+    // --- ▲▲▲ [수정] 과거 날짜(dayDifference < 0)도 API를 호출하도록 추가 ▲▲▲ ---
+    else {
+      // D+3 (글피) 이후
+      // 단기예보 API 범위 밖이므로 "예보 없음" 처리
+      if (mounted) {
+        setState(() {
+          _currentTemp = "";
+          _skyCondition = "예보 없음";
+          _skyIcon = Icons.help_outline;
+          _minTemp = null;
+          _maxTemp = null;
+        });
+      }
     }
   }
 
@@ -290,16 +308,36 @@ class CalendarScreenState extends State<CalendarScreen> {
   Future<void> _fetchFutureForecast(double lat, double lng, DateTime date) async {
     try {
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
-      // --- ▼▼▼ [수정] 어제 날짜를 위해 base_date를 'date'로 설정 (기존 유지) ▼▼▼ ---
-      final baseDate = DateFormat('yyyyMMdd').format(date);
-      const baseTime = '0200'; // 02시 발표 자료가 그날 예보를 포함
-      // --- ▲▲▲ [수정] 어제 날짜를 위해 base_date를 'date'로 설정 (기존 유지) ▲▲▲ ---
+
+      // --- ▼▼▼ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▼▼▼ ---
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final selected = DateTime(date.year, date.month, date.day);
+
+      final targetDate = DateFormat('yyyyMMdd').format(date); // 예보를 찾을 날짜 (fcstDate)
+      String baseDate;
+      const baseTime = '0200';
+
+      if (selected.isAfter(today)) {
+        // [미래 날짜 D+1, D+2]
+        // API 기준일(baseDate)은 '오늘'이어야 함
+        DateTime baseDateTime = now.hour < 2 ? now.subtract(const Duration(days: 1)) : now;
+        baseDate = DateFormat('yyyyMMdd').format(baseDateTime);
+      } else {
+        // [과거 날짜 D-1...]
+        // API 기준일(baseDate)은 '선택한 날짜'와 동일
+        baseDate = targetDate;
+      }
+      // --- ▲▲▲ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▲▲▲ ---
+
       final gridCoords = _convertToGrid(lat, lng);
       final nx = gridCoords['x'];
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-            '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+        // --- ▼▼▼ [수정] numOfRows=1000으로 변경 ▼▼▼ ---
+            '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+        // --- ▲▲▲ [수정] numOfRows=1000으로 변경 ▲▲▲ ---
       );
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -309,18 +347,16 @@ class CalendarScreenState extends State<CalendarScreen> {
           Map<String, String> weatherData = {};
 
           for (var item in items) {
-            // '1200' (정오 12시) 예보, *해당 날짜(baseDate)*에 대한 것
-            if (item['fcstDate'] == baseDate && item['fcstTime'] == '1200') {
+            // targetDate(선택한 날짜)의 12시 예보를 찾음
+            if (item['fcstDate'] == targetDate && item['fcstTime'] == '1200') {
               weatherData[item['category']] = item['fcstValue'];
             }
           }
 
-          // --- ▼▼▼ [수정] T3H가 없으면 TMP로 대체 ▼▼▼ ---
           String temp = weatherData['T3H'] ?? ''; // 3시간 기온
           if (temp.isEmpty) {
             temp = weatherData['TMP'] ?? ''; // 1시간 기온(TMP)으로 대체
           }
-          // --- ▲▲▲ [수정] T3H가 없으면 TMP로 대체 ▲▲▲ ---
           String sky = weatherData['SKY'] ?? '';
           String pty = weatherData['PTY'] ?? '';
 
@@ -339,21 +375,43 @@ class CalendarScreenState extends State<CalendarScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _skyCondition = "예보 오류");
-      debugPrint("미래 예보 API 오류: $e");
+      debugPrint("미래/과거 예보 API 오류: $e");
     }
   }
 
   Future<void> _fetchMinMaxTemp(double lat, double lng, DateTime date) async {
     try {
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
-      final baseDate = DateFormat('yyyyMMdd').format(date);
+
+      // --- ▼▼▼ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▼▼▼ ---
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final selected = DateTime(date.year, date.month, date.day);
+
+      final targetDate = DateFormat('yyyyMMdd').format(date); // 예보를 찾을 날짜 (fcstDate)
+      String baseDate;
       const baseTime = '0200';
+
+      if (selected.isAfter(today)) {
+        // [미래 날짜 D+1, D+2]
+        // API 기준일(baseDate)은 '오늘'이어야 함
+        DateTime baseDateTime = now.hour < 2 ? now.subtract(const Duration(days: 1)) : now;
+        baseDate = DateFormat('yyyyMMdd').format(baseDateTime);
+      } else {
+        // [과거 날짜 D-1...]
+        // API 기준일(baseDate)은 '선택한 날짜'와 동일
+        baseDate = targetDate;
+      }
+      // --- ▲▲▲ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▲▲▲ ---
+
       final gridCoords = _convertToGrid(lat, lng);
       final nx = gridCoords['x'];
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-            '?authKey=$apiKey&pageNo=1&numOfRows=300&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+        // --- ▼▼▼ [수정] numOfRows=1000으로 변경 ▼▼▼ ---
+            '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
+        // --- ▲▲▲ [수정] numOfRows=1000으로 변경 ▲▲▲ ---
       );
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -362,7 +420,8 @@ class CalendarScreenState extends State<CalendarScreen> {
           final items = data['response']['body']['items']['item'] as List;
           String tmn = '', tmx = '';
           for (var item in items) {
-            if (item['fcstDate'] == baseDate) {
+            // targetDate(선택한 날짜)의 TMN/TMX를 찾음
+            if (item['fcstDate'] == targetDate) {
               if (item['category'] == 'TMN') tmn = item['fcstValue'];
               if (item['category'] == 'TMX') tmx = item['fcstValue'];
             }
@@ -379,6 +438,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       debugPrint("최저/최고기온 API 오류: $e");
     }
   }
+
   String _getPtyString(String ptyCode) {
     switch (ptyCode) {
       case '0': return ''; case '1': return '비'; case '2': return '비/눈';
@@ -647,6 +707,14 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDateWeatherCard() {
+    // --- ▼▼▼ [수정] 오늘/과거/미래 UI 분기를 위한 날짜 비교 로직 추가 ▼▼▼ ---
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selected = _selectedDay ?? now; // _selectedDay가 null일 경우 오늘로 간주
+    final selectedDate = DateTime(selected.year, selected.month, selected.day);
+    final bool isToday = selectedDate.isAtSameMomentAs(today);
+    // --- ▲▲▲ [수정] 오늘/과거/미래 UI 분기를 위한 날짜 비교 로직 추가 ▲▲▲ ---
+
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -670,14 +738,20 @@ class CalendarScreenState extends State<CalendarScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // --- ▼▼▼ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▼▼▼ ---
                   Text(
-                    _currentTemp,
+                    isToday ? _currentTemp : _skyCondition,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  Text(
-                    _skyCondition,
-                    style: TextStyle(color: Colors.grey[800], fontSize: 14),
-                  ),
+                  // --- ▲▲▲ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▲▲▲ ---
+
+                  // --- ▼▼▼ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▼▼▼ ---
+                  if (isToday)
+                    Text(
+                      _skyCondition,
+                      style: TextStyle(color: Colors.grey[800], fontSize: 14),
+                    ),
+                  // --- ▲▲▲ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▲▲▲ ---
                 ],
               ),
             ],

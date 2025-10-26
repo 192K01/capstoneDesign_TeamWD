@@ -41,6 +41,27 @@ def init_db():
             )
         ''')
 
+	# --- ▼▼▼ [추가] 'outfits' 테이블 생성 ▼▼▼ ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS outfits (
+                outfit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT,
+                top_cloth_id INTEGER,
+                bottom_cloth_id INTEGER,
+                shoes_cloth_id INTEGER,
+	    tpo_category TEXT, -- 추천된 TPO 카테고리 저장 컬럼 추가
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (top_cloth_id) REFERENCES clothes (cloth_id),    -- clothes 테이블 PK 참조
+                FOREIGN KEY (bottom_cloth_id) REFERENCES clothes (cloth_id), -- clothes 테이블 PK 참조
+                FOREIGN KEY (shoes_cloth_id) REFERENCES clothes (cloth_id)   -- clothes 테이블 PK 참조
+            )
+        ''')
+        # --- ▲▲▲ [추가] 'outfits' 테이블 생성 ▲▲▲ ---
+
+        print("* Basic table schemas checked/created.")
+
         # schedule 테이블 (컬럼이 빠져있을 수 있는 기본 구조)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS schedule (
@@ -54,6 +75,15 @@ def init_db():
         # 3. 'schedule' 테이블의 현재 컬럼 목록을 가져옵니다.
         cursor.execute("PRAGMA table_info(schedule)")
         columns = [column[1] for column in cursor.fetchall()]
+	# --- ▼▼▼ [추가] 'outfits' 테이블 업데이트 로직 ▼▼▼ ---
+        cursor.execute("PRAGMA table_info(outfits)")
+        outfits_columns = [column[1] for column in cursor.fetchall()]
+
+        # 'tpo_category' 컬럼이 없으면 추가
+        if 'tpo_category' not in outfits_columns:
+            print("  - Updating 'outfits' table... adding 'tpo_category' column.")
+            cursor.execute("ALTER TABLE outfits ADD COLUMN tpo_category TEXT")
+        # --- ▲▲▲ [추가] 'outfits' 테이블 업데이트 로직 ▲▲▲ ---
 
         # 4. 'start_time' 컬럼이 없으면 ALTER 명령어로 추가합니다.
         if 'start_time' not in columns:

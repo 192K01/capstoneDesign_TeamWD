@@ -30,9 +30,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
     const String clientId = 'WkcnrhscDf9afdyTC9Cq';
     const String clientSecret = '7fKmpqhZlF';
-    final url = Uri.parse(
-      'https://openapi.naver.com/v1/search/local.json?query=${Uri.encodeComponent(query)}&display=5',
-    );
+    final url = Uri.parse('https://openapi.naver.com/v1/search/local.json?query=${Uri.encodeComponent(query)}&display=5');
 
     try {
       final response = await http.get(
@@ -64,7 +62,9 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('위치 검색')),
+      appBar: AppBar(
+        title: const Text('위치 검색'),
+      ),
       body: Column(
         children: [
           Padding(
@@ -94,9 +94,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                 itemCount: _searchResults.length,
                 itemBuilder: (context, index) {
                   final place = _searchResults[index];
-                  final title =
-                      place['title']?.replaceAll(RegExp(r'<[^>]*>'), '') ??
-                      '이름 없음';
+                  final title = place['title']?.replaceAll(RegExp(r'<[^>]*>'), '') ?? '이름 없음';
                   final roadAddress = place['roadAddress'] ?? '주소 정보 없음';
 
                   return ListTile(

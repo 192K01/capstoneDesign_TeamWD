@@ -114,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               // 1. 로고 (임시 텍스트)
               const Text(
-                'CodiApp',
+                'coordiapp', // 어플 이름
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 48,

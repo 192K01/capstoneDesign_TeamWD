@@ -1,0 +1,3 @@
+# ../ai_server
+# aws ec2 비밀키 제외
+/teamwd_ec2_rsa.pem

@@ -20,7 +20,11 @@ class ClothDetailScreen extends StatelessWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')));
-      return;
+      //
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')),
+//       );
+//       return;
     }
 
     // 삭제 확인 다이얼로그 표시
@@ -62,6 +66,9 @@ class ClothDetailScreen extends StatelessWidget {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('옷이 삭제되었습니다.')));
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(content: Text('옷이 삭제되었습니다.')),
+//         );
         // 화면을 닫고 profile_screen에 true를 반환하여 새로고침 신호 보냄
         if (context.mounted) {
           Navigator.pop(context, true);
@@ -77,6 +84,9 @@ class ClothDetailScreen extends StatelessWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('삭제 중 오류 발생: $e')));
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         SnackBar(content: Text('삭제 중 오류 발생: $e')),
+//       );
     }
   }
 
@@ -166,20 +176,10 @@ class ClothDetailScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildInfoRow(Icons.label_outline, name),
-                      _buildInfoRow(
-                        Icons.category_outlined,
-                        '$subCategory > $articleType',
-                      ),
+                      _buildInfoRow(Icons.category_outlined, '$subCategory > $articleType'),
                       _buildInfoRow(Icons.color_lens_outlined, color),
-                      _buildInfoRow(
-                        Icons.calendar_today_outlined,
-                        '24. 12. 17. 등록',
-                      ), // 등록일은 예시 데이터입니다.
-                      _buildInfoRow(
-                        Icons.history,
-                        '착용기록 4회',
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      ),
+                      _buildInfoRow(Icons.calendar_today_outlined, '24. 12. 17. 등록'), // 등록일은 예시 데이터입니다.
+                      _buildInfoRow(Icons.history, '착용기록 4회', trailing: const Icon(Icons.arrow_forward_ios, size: 16)),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -200,25 +200,17 @@ class ClothDetailScreen extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () {},
               icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-              label: const Text(
-                '이 옷으로 새로운 룩 생성하기',
-                style: TextStyle(color: Colors.white),
-              ),
+              label: const Text('이 옷으로 새로운 룩 생성하기', style: TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.cyan,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
             const SizedBox(height: 24),
 
             // Discovery 섹션
-            const Text(
-              'Discovery',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
+            const Text('Discovery', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             SizedBox(
               height: 200,

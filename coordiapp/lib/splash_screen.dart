@@ -34,12 +34,12 @@ class _SplashScreenState extends State<SplashScreen> {
       context,
       MaterialPageRoute(
         // isLoggedIn이 true이면 MainScreen으로, false이면 LoginScreen으로 이동
-        builder: (context) =>
-            isLoggedIn ? const MainScreen() : const LoginScreen(),
+        builder: (context) => isLoggedIn ? const MainScreen() : const LoginScreen(),
       ),
     );
   }
   // --- ▲▲▲ [수정] 로그인 상태를 확인하고 화면을 이동시키는 함수 ▲▲▲ ---
+
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +59,9 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             SizedBox(height: 24),
 
-            CircularProgressIndicator(color: Colors.grey),
+            CircularProgressIndicator(
+              color: Colors.grey,
+            ),
           ],
         ),
       ),

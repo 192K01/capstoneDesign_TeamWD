@@ -268,7 +268,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               CupertinoButton(
                 child: const Text('확인'),
                 onPressed: () => Navigator.pop(context),
-              )
+              ),
             ],
           ),
         ),
@@ -347,7 +347,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
                         });
                         Navigator.pop(context);
                       },
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -369,7 +369,10 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
           icon: const Icon(Icons.close, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('일정 추가', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          '일정 추가',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         actions: [
           _isLoading
               ? const Padding(padding: EdgeInsets.only(right: 16.0), child: Center(child: CupertinoActivityIndicator()))
@@ -385,7 +388,20 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
           const SizedBox(height: 16),
           _buildOptionTile(icon: Icons.repeat, title: '반복 설정', value: '반복안함'),
           const SizedBox(height: 16),
-          _buildOptionTile(icon: Icons.calendar_today_outlined, title: '기본일정', subtitle: '내 캘린더'),
+          _buildOptionTile(
+            icon: Icons.calendar_today_outlined,
+            title: '기본일정',
+            subtitle: '내 캘린더',
+          ),
+          const SizedBox(height: 16),
+          GestureDetector(
+            onTap: _navigateToLocationSearch,
+            child: _buildOptionTile(
+              icon: Icons.location_on_outlined,
+              title: _locationName,
+              subtitle: _locationAddress,
+            ),
+          ),
           const SizedBox(height: 16),
           GestureDetector(
             onTap: _navigateToLocationSearch,
@@ -545,6 +561,68 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
               )).toList(),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipantsSection() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.people_outline, size: 24),
+                  SizedBox(width: 12),
+                  Text('참가자', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+              IconButton(
+                icon: Icon(Icons.add, color: Colors.grey[600]),
+                onPressed: _showAddParticipantDialog,
+              ),
+            ],
+          ),
+          _participants.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 4.0, left: 36.0),
+                  child: Text(
+                    '참가자 없음',
+                    style: TextStyle(color: Colors.grey[700], fontSize: 14),
+                  ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Wrap(
+                    spacing: 8.0,
+                    runSpacing: 4.0,
+                    children: _participants
+                        .map(
+                          (email) => Chip(
+                            label: Text(email),
+                            labelStyle: const TextStyle(color: Colors.black),
+                            backgroundColor: Colors.white,
+                            deleteIcon: const Icon(Icons.close, size: 18),
+                            onDeleted: () {
+                              setState(() {
+                                _participants.remove(email);
+                              });
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
         ],
       ),
     );

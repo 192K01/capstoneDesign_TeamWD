@@ -318,52 +318,75 @@ class ProfileScreenState extends State<ProfileScreen>
         itemCount: _filteredClosetItems.length,
         itemBuilder: (context, index) {
           final cloth = _filteredClosetItems[index];
-          final imagePath = cloth['clothingImg'] as String?;
+          final imagePathOrUrl = cloth['clothingImg'] as String?;
+          const String serverBaseUrl = 'http://3.36.66.130:5000'; // 서버 주소
+
           return GestureDetector(
             onTap: () async {
-              // ▼▼▼ [수정됨] async/await 추가 ▼▼▼
-              // 상세 화면으로 이동하고, 결과값을 받습니다.
+              // async 추가
+              // 상세 화면으로 이동하고, 결과를 기다립니다.
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
+                  // cloth 데이터를 ClothDetailScreen으로 전달합니다.
                   builder: (context) => ClothDetailScreen(cloth: cloth),
-                  fullscreenDialog: true,
+                  fullscreenDialog: true, // 상세 화면을 전체 화면 Dialog처럼 표시
                 ),
               );
 
-              // ▼▼▼ [수정됨] 결과값 확인 후 목록 새로고침 ▼▼▼
-              // 만약 상세 화면에서 true를 반환했다면 (삭제 성공)
-              // performSearch()를 호출하여 옷 목록을 새로고칩니다.
+              // 만약 상세 화면에서 옷이 삭제되었다는 신호(true)를 받으면
+              // 옷 목록을 새로고침합니다.
               if (result == true) {
                 performSearch();
               }
             },
             child: Card(
+              // 기존 Card UI는 그대로 사용합니다.
               elevation: 0,
               color: Colors.grey[200],
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               clipBehavior: Clip.antiAlias,
-              child: (imagePath != null && imagePath.isNotEmpty)
-                  ? Image.file(
-                File(imagePath),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Icon(Icons.error_outline, color: Colors.white),
-                  );
-                },
-              )
+              child: (imagePathOrUrl != null && imagePathOrUrl.isNotEmpty)
+                  ? Image.network(
+                      imagePathOrUrl.startsWith('http')
+                          ? imagePathOrUrl
+                          : '$serverBaseUrl/$imagePathOrUrl',
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                : null,
+                            strokeWidth: 2,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        print("Image load error for $imagePathOrUrl: $error");
+                        return const Center(
+                          child: Icon(Icons.error_outline, color: Colors.grey),
+                        );
+                      },
+                    )
                   : const Center(
-                child: Icon(Icons.checkroom, size: 40, color: Colors.white),
-              ),
+                      child: Icon(
+                        Icons.checkroom,
+                        size: 40,
+                        color: Colors.grey,
+                      ),
+                    ),
             ),
           );
         },
       ),
     );
   }
+  // --- ▲▲▲ [수정] GestureDetector와 화면 이동 로직 다시 추가 ▲▲▲ ---
 
   Widget _buildBookmarkScreen() {
     return const Center(

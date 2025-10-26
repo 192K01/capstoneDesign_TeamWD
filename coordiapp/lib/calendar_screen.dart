@@ -58,7 +58,6 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-
   Future<void> _loadInitialData() async {
     await _loadSchedulesFromServer();
     try {
@@ -117,15 +116,24 @@ class CalendarScreenState extends State<CalendarScreen> {
         final startDate = DateTime.parse(schedule['startDate']);
         final endDate = DateTime.parse(schedule['endDate']);
 
-        final normalizedSelectedDate =
-        DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
-        final normalizedStartDate =
-        DateTime(startDate.year, startDate.month, startDate.day);
-        final normalizedEndDate =
-        DateTime(endDate.year, endDate.month, endDate.day);
+        final normalizedSelectedDate = DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+        );
+        final normalizedStartDate = DateTime(
+          startDate.year,
+          startDate.month,
+          startDate.day,
+        );
+        final normalizedEndDate = DateTime(
+          endDate.year,
+          endDate.month,
+          endDate.day,
+        );
 
         return (normalizedSelectedDate.isAtSameMomentAs(normalizedStartDate) ||
-            normalizedSelectedDate.isAfter(normalizedStartDate)) &&
+                normalizedSelectedDate.isAfter(normalizedStartDate)) &&
             (normalizedSelectedDate.isAtSameMomentAs(normalizedEndDate) ||
                 normalizedSelectedDate.isBefore(normalizedEndDate));
       } catch (e) {
@@ -168,7 +176,6 @@ class CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
-
   Future<void> _setDateString(DateTime date) async {
     _dateString = DateFormat('M. d. E', 'ko_KR').format(date);
   }
@@ -198,6 +205,7 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _fetchWeather(Position position, DateTime date) async {
+    // --- ▼▼▼ [수정] 날짜 비교 기준을 명확하게 변경 (자정 기준) ▼▼▼ ---
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final selected = DateTime(date.year, date.month, date.day);
@@ -353,10 +361,12 @@ class CalendarScreenState extends State<CalendarScreen> {
             }
           }
 
+          // --- ▼▼▼ [수정] T3H가 없으면 TMP로 대체 ▼▼▼ ---
           String temp = weatherData['T3H'] ?? ''; // 3시간 기온
           if (temp.isEmpty) {
             temp = weatherData['TMP'] ?? ''; // 1시간 기온(TMP)으로 대체
           }
+          // --- ▲▲▲ [수정] T3H가 없으면 TMP로 대체 ▲▲▲ ---
           String sky = weatherData['SKY'] ?? '';
           String pty = weatherData['PTY'] ?? '';
 
@@ -536,7 +546,6 @@ class CalendarScreenState extends State<CalendarScreen> {
       },
     );
   }
-
 
   void _navigateAndRefresh() async {
     final result = await Navigator.push(
@@ -898,7 +907,6 @@ class CalendarScreenState extends State<CalendarScreen> {
     );
   }
 } // CalendarScreen 끝
-
 
 class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;

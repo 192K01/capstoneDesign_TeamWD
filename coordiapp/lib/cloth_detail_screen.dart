@@ -10,7 +10,6 @@ class ClothDetailScreen extends StatelessWidget {
 
   // 옷 삭제 함수
   Future<void> _deleteCloth(BuildContext context) async {
-
     // ▼▼▼ [수정됨] 'cloth_id' -> 'id'로 변경 ▼▼▼
     // cloth 맵에서 'id'를 가져옵니다.
     final clothId = cloth['id'];
@@ -18,10 +17,14 @@ class ClothDetailScreen extends StatelessWidget {
 
     if (clothId == null) {
       // clothId가 없는 경우 오류 메시지 표시
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')),
-      );
-      return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')));
+      //
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         const SnackBar(content: Text('삭제 오류: 옷 ID를 찾을 수 없습니다.')),
+//       );
+//       return;
     }
 
     // 삭제 확인 다이얼로그 표시
@@ -60,9 +63,12 @@ class ClothDetailScreen extends StatelessWidget {
 
       if (response.statusCode == 200) {
         // 삭제 성공
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('옷이 삭제되었습니다.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('옷이 삭제되었습니다.')));
+//         ScaffoldMessenger.of(context).showSnackBar(
+//           const SnackBar(content: Text('옷이 삭제되었습니다.')),
+//         );
         // 화면을 닫고 profile_screen에 true를 반환하여 새로고침 신호 보냄
         if (context.mounted) {
           Navigator.pop(context, true);
@@ -75,9 +81,12 @@ class ClothDetailScreen extends StatelessWidget {
       }
     } catch (e) {
       // 네트워크 오류 또는 기타 예외
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('삭제 중 오류 발생: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('삭제 중 오류 발생: $e')));
+//       ScaffoldMessenger.of(context).showSnackBar(
+//         SnackBar(content: Text('삭제 중 오류 발생: $e')),
+//       );
     }
   }
 
@@ -97,17 +106,29 @@ class ClothDetailScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false, // 뒤로가기 버튼 제거
-        title: const Text('옷 상세정보', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          '옷 상세정보',
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         centerTitle: false,
         actions: [
-          IconButton(icon: const Icon(Icons.favorite_border, color: Colors.black), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.edit, color: Colors.black), onPressed: () {}),
+          IconButton(
+            icon: const Icon(Icons.favorite_border, color: Colors.black),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit, color: Colors.black),
+            onPressed: () {},
+          ),
           // onPressed에 _deleteCloth 함수 연결
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.black),
             onPressed: () => _deleteCloth(context),
           ),
-          IconButton(icon: const Icon(Icons.close, color: Colors.black), onPressed: () => Navigator.pop(context)),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.black),
+            onPressed: () => Navigator.pop(context),
+          ),
         ],
       ),
       body: SingleChildScrollView(
@@ -130,13 +151,19 @@ class ClothDetailScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         image: imagePath.isNotEmpty
                             ? DecorationImage(
-                          image: FileImage(File(imagePath)),
-                          fit: BoxFit.cover,
-                        )
+                                image: FileImage(File(imagePath)),
+                                fit: BoxFit.cover,
+                              )
                             : null,
                       ),
                       child: imagePath.isEmpty
-                          ? const Center(child: Icon(Icons.checkroom, size: 50, color: Colors.white))
+                          ? const Center(
+                              child: Icon(
+                                Icons.checkroom,
+                                size: 50,
+                                color: Colors.white,
+                              ),
+                            )
                           : null,
                     ),
                   ),
@@ -195,14 +222,24 @@ class ClothDetailScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             // Review 섹션
-            const Text('Review', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text(
+              'Review',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
-                ...List.generate(4, (index) => const Icon(Icons.star, color: Colors.amber, size: 28)),
+                ...List.generate(
+                  4,
+                  (index) =>
+                      const Icon(Icons.star, color: Colors.amber, size: 28),
+                ),
                 const Icon(Icons.star_half, color: Colors.amber, size: 28),
                 const SizedBox(width: 8),
-                const Text('4.5', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  '4.5',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             const SizedBox(height: 4),

@@ -130,6 +130,12 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
       final closestColorName = _findClosestColor(dominantColor, _colorStandard);
       if (mounted) {
         setState(() => _selectedColor = closestColorName);
+        // --- ▼▼▼ [요청] 최종 색상 print 출력 ▼▼▼ ---
+        // (RGB and LAB values are already printed inside _rgbToLab)
+        print('--- [Color Analysis Result] ---');
+        print('Final Selected Color: $_selectedColor');
+        print('-------------------------------');
+        // --- ▲▲▲ [요청] 최종 색상 print 출력 ▲▲▲ ---
       }
     }
 
@@ -157,6 +163,13 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
             _selectedSubCategory = _subCategoryMap[data['subCategory']];
             _selectedArticleType = data['articleType'];
           });
+          // --- ▼▼▼ [요청] 중분류, 상세품목 print 출력 ▼▼▼ ---
+          print('--- [Cloth Type Analysis] ---');
+          print('AI-Analyzed subCategory (Raw): ${data['subCategory']}');
+          print('Selected subCategory (Mapped): $_selectedSubCategory');
+          print('Selected articleType: $_selectedArticleType');
+          print('-----------------------------');
+          // --- ▲▲▲ [요청] 중분류, 상세품목 print 출력 ▲▲▲ ---
         }
       } else {
         if (mounted) setState(() => _selectedArticleType = '분석 실패 (서버 오류)');

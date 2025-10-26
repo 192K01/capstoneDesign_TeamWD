@@ -89,13 +89,13 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     // '하의': ['연청', '진청', '베이지', '카키', '와인', '블랙', '화이트', '그레이'],
     // '상의' 색상 옵션
     '상의': ['화이트', '화이트 계열', '레드', '핑크', '오렌지', '옐로우',
-      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인'],
+      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인', '갈색'],
     // '하의' 색상 옵션
     '하의': ['화이트', '화이트 계열', '레드', '핑크', '오렌지', '옐로우',
-      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인'],
+      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인', '갈색'],
     // '신발' 색상 옵션
     '신발': ['화이트', '화이트 계열', '레드', '핑크', '오렌지', '옐로우',
-      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인'],
+      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인', '갈색'],
   };
 
   @override
@@ -130,6 +130,12 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
       final closestColorName = _findClosestColor(dominantColor, _colorStandard);
       if (mounted) {
         setState(() => _selectedColor = closestColorName);
+        // --- ▼▼▼ [요청] 최종 색상 print 출력 ▼▼▼ ---
+        // (RGB and LAB values are already printed inside _rgbToLab)
+        print('--- [Color Analysis Result] ---');
+        print('Final Selected Color: $_selectedColor');
+        print('-------------------------------');
+        // --- ▲▲▲ [요청] 최종 색상 print 출력 ▲▲▲ ---
       }
     }
 
@@ -157,6 +163,13 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
             _selectedSubCategory = _subCategoryMap[data['subCategory']];
             _selectedArticleType = data['articleType'];
           });
+          // --- ▼▼▼ [요청] 중분류, 상세품목 print 출력 ▼▼▼ ---
+          print('--- [Cloth Type Analysis] ---');
+          print('AI-Analyzed subCategory (Raw): ${data['subCategory']}');
+          print('Selected subCategory (Mapped): $_selectedSubCategory');
+          print('Selected articleType: $_selectedArticleType');
+          print('-----------------------------');
+          // --- ▲▲▲ [요청] 중분류, 상세품목 print 출력 ▲▲▲ ---
         }
       } else {
         if (mounted) setState(() => _selectedArticleType = '분석 실패 (서버 오류)');

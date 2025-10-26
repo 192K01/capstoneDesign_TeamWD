@@ -59,20 +59,47 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
 
+  // --- ▼▼▼ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▼▼▼ ---
   Future<void> _loadInitialData() async {
-    await _loadSchedulesFromServer();
-    try {
-      _currentPosition = await _getCurrentLocation();
-    } catch (e) {
-      if (mounted) setState(() => _skyCondition = e.toString());
+    Position? fetchedPosition;
+    String? locationError;
+
+    // 1. 일정 로드와 위치 정보 가져오기를 병렬로 실행
+    final scheduleFuture = _loadSchedulesFromServer();
+    final locationFuture = _getCurrentLocation().then((pos) {
+      fetchedPosition = pos; // 성공 시 위치 저장
+    }).catchError((e) {
+      locationError = e.toString(); // 실패 시 에러 메시지 저장
+    });
+
+    // 2. 두 작업이 모두 완료될 때까지 대기
+    await Future.wait([scheduleFuture, locationFuture]);
+
+    // 3. (mounted 확인 후) 위치 정보 및 에러 상태 업데이트
+    if (mounted) {
+      setState(() {
+        if (fetchedPosition != null) {
+          _currentPosition = fetchedPosition;
+        }
+        if (locationError != null) {
+          _skyCondition = locationError!;
+        }
+      });
     }
+
+    // 4. 날씨 정보 로드 및 일정 필터링 실행
+    //    (_onDaySelected는 내부적으로 _currentPosition을 사용함)
     await _onDaySelected(_selectedDay!, _focusedDay);
+
+    // 5. 모든 초기 로드가 완료되었으므로 로딩 상태 해제
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
   }
+  // --- ▲▲▲ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▲▲▲ ---
+
 
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();

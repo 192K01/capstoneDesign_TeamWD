@@ -14,6 +14,21 @@ app = Flask(__name__)
 init_db()
 load_model()
 
+# --- ▼▼▼ [추가] 이미지 업로드를 위한 설정 ▼▼▼ ---
+UPLOAD_FOLDER = 'uploads' # 이미지를 저장할 폴더 이름
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'} # 허용할 확장자
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# 폴더가 없으면 생성
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# --- ▲▲▲ [추가] 이미지 업로드를 위한 설정 ▲▲▲ ---
+
 @app.route('/')
 def home():
     return "AI 모델 서버가 작동 중입니다."
@@ -90,40 +105,55 @@ def login():
     else:
         return jsonify({"message": "이메일 또는 비밀번호가 잘못되었습니다."}), 401
 
+# --- ▼▼▼ [수정] 옷 추가 API (user_id 찾기, 오류 처리 추가) ▼▼▼ ---
 @app.route('/clothes', methods=['POST'])
 def add_cloth():
     data = request.get_json()
     email = data.get('email')
     name = data.get('name')
-    
+    clothingImg = data.get('clothingImg')
+
     if not email or not name:
         return jsonify({"message": "이메일과 옷 이름은 필수입니다."}), 400
+    if not clothingImg:
+         return jsonify({"message": "이미지 경로가 없습니다."}), 400
 
-    conn = sqlite3.connect(DATABASE_NAME)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-    user_row = cursor.fetchone()
-
-    if user_row is None:
-        conn.close()
-        return jsonify({"message": "사용자를 찾을 수 없습니다."}), 404
-        
-    user_id = user_row['id']
-    
+    conn = None # finally 에서 사용하기 위해 try 밖에 선언
     try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        conn.row_factory = sqlite3.Row # 결과를 dictionary처럼 사용하기 위해 추가
+        cursor = conn.cursor()
+
+        # 1. 이메일로 user_id를 찾습니다.
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        user_row = cursor.fetchone()
+
+        if user_row is None:
+             # conn.close() 는 finally 에서 처리하므로 여기서 닫지 않음
+             return jsonify({"message": "사용자를 찾을 수 없습니다."}), 404
+        user_id = user_row['id']
+
+        # 2. 찾은 user_id와 함께 옷 정보를 저장합니다.
         cursor.execute('''
             INSERT INTO clothes (user_id, name, subCategory, articleType, color, clothingImg, memo)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, name, data.get('subCategory'), data.get('articleType'), data.get('color'), data.get('clothingImg'), data.get('memo')))
+        ''', (user_id, name, data.get('subCategory'), data.get('articleType'), data.get('color'), clothingImg, data.get('memo')))
         conn.commit()
         return jsonify({"message": "옷이 성공적으로 추가되었습니다."}), 201
-    except sqlite3.Error as e:
-        conn.rollback()
+
+    except sqlite3.Error as e: # 데이터베이스 관련 오류 처리
+        if conn:
+            conn.rollback() # 오류 발생 시 롤백
+        print(f"Database error in add_cloth: {e}")
         return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
-    finally:
-        conn.close()
+    except Exception as e: # 그 외 모든 예외 처리
+        print(f"An error occurred in add_cloth: {e}")
+        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally: # 성공하든 실패하든 항상 실행
+        if conn:
+            conn.close() # 데이터베이스 연결 종료
+# --- ▲▲▲ [수정] 옷 추가 API (user_id 찾기, 오류 처리 추가) ▲▲▲ ---
+
 
 @app.route('/clothes/<email>', methods=['GET'])
 def get_clothes(email):
@@ -343,6 +373,38 @@ def get_schedules(email):
         if conn:
             conn.close()
 # --- ▲▲▲ [수정] TPO 데이터 조회 로직 추가 ▲▲▲ ---
+
+# --- ▼▼▼ [추가] 이미지 업로드 API 엔드포인트 ▼▼▼ ---
+@app.route('/upload_image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': '이미지 파일이 없습니다.'}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': '선택된 파일이 없습니다.'}), 400
+    if file and allowed_file(file.filename):
+        # 파일 이름을 안전하게 만들고 저장 경로 생성
+        filename = secure_filename(f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # 클라이언트에게 돌려줄 이미지 접근 경로 (예: 상대 경로)
+        # 실제 운영 시에는 전체 URL (http://서버IP:포트/uploads/파일명)을 반환하는 것이 좋음
+        image_url = f"{UPLOAD_FOLDER}/{filename}" 
+        
+        return jsonify({'message': '이미지 업로드 성공', 'image_url': image_url}), 201
+    else:
+        return jsonify({'error': '허용되지 않는 파일 형식입니다.'}), 400
+# --- ▲▲▲ [추가] 이미지 업로드 API 엔드포인트 ▲▲▲ ---
+
+# --- ▼▼▼ [추가] 업로드된 이미지 파일을 서빙하는 엔드포인트 ▼▼▼ ---
+from flask import send_from_directory
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    # UPLOAD_FOLDER에서 파일을 찾아 반환
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+# --- ▲▲▲ [추가] 업로드된 이미지 파일을 서빙하는 엔드포인트 ▲▲▲ ---
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

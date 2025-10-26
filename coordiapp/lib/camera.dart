@@ -175,7 +175,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
   }
 
   Future<String?> _removeBackground(String imagePath) async {
-    const String apiKey = 'HSmQd4FFG1ACQzMgTzU6iiyf'; // 실제 API 키로 교체하세요
+    const String apiKey = '4swzLhhnDRvT6fBADKaCkhFg'; // 실제 API 키로 교체하세요
     final request = http.MultipartRequest(
       'POST',
       Uri.parse('https://api.remove.bg/v1.0/removebg'),

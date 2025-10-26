@@ -247,8 +247,13 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     return Color(dominantColor);
   }
 
-  // --- ▼▼▼ [수정] RGB-to-Lab 변환 헬퍼 함수 추가 ▼▼▼ ---
+  // --- ▼▼▼ [수정] RGB-to-Lab 변환 헬퍼 함수 추가 (및 print 구문 추가) ▼▼▼ ---
   List<double> _rgbToLab(Color color) {
+    // --- ▼▼▼ [요청] RGB 값 출력 ▼▼▼ ---
+    print('--- [Color Analysis] ---');
+    print('Input RGB: R=${color.red}, G=${color.green}, B=${color.blue}');
+    // --- ▲▲▲ [요청] RGB 값 출력 ▲▲▲ ---
+
     // 1. RGB to XYZ
     double r = color.red / 255.0;
     double g = color.green / 255.0;
@@ -284,9 +289,14 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     double a = 500.0 * (x - y);
     double bLab = 200.0 * (y - z);
 
+    // --- ▼▼▼ [요청] LAB 값 출력 ▼▼▼ ---
+    print('Calculated LAB: L=${l.toStringAsFixed(2)}, a=${a.toStringAsFixed(2)}, b=${bLab.toStringAsFixed(2)}');
+    print('------------------------');
+    // --- ▲▲▲ [요청] LAB 값 출력 ▲▲▲ ---
+
     return [l, a, bLab];
   }
-  // --- ▲▲▲ [수정] RGB-to-Lab 변환 헬퍼 함수 추가 ▲▲▲ ---
+  // --- ▲▲▲ [수정] RGB-to-Lab 변환 헬퍼 함수 추가 (및 print 구문 추가) ▲▲▲ ---
 
   // --- ▼▼▼ [수정] Lab 값으로 유클리드 거리 계산 ▼▼▼ ---
   String _findClosestColor(

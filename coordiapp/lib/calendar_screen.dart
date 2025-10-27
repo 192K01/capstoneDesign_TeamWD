@@ -985,9 +985,9 @@ class CalendarScreenState extends State<CalendarScreen> {
     final firstSchedule = _selectedDaySchedules.first;
     // main.dart와 동일한 TPO 매핑
     const tpoMapping = {
-      '일상&캐주얼': 'Casual & Daily',
-      '비즈니스&포멀': 'Business & Formal',
-      '특별한 날&데이트': 'Special Occasion & Date',
+      '일상 & 캐주얼': 'Casual & Daily',
+      '비즈니스 & 포멀': 'Business & Formal',
+      '특별한 날 & 데이트': 'Special Occasion & Date',
       '활동적인 날': 'Active Day',
     };
 
@@ -997,7 +997,7 @@ class CalendarScreenState extends State<CalendarScreen> {
         ? tpo1
         : (tpo2 != null && tpo2.isNotEmpty)
         ? tpo2
-        : '일상&캐주얼'; // 일정에 TPO가 없으면 기본값
+        : '일상 & 캐주얼'; // 일정에 TPO가 없으면 기본값
 
     return tpoMapping[rawTpo] ?? 'Casual & Daily';
   }

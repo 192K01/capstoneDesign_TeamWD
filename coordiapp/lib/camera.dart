@@ -86,65 +86,14 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     // ],
     // '하의': ['연청', '진청', '베이지', '카키', '와인', '블랙', '화이트', '그레이'],
     // '상의' 색상 옵션
-    '상의': [
-      '화이트',
-      '화이트 계열',
-      '레드',
-      '핑크',
-      '오렌지',
-      '옐로우',
-      '그린',
-      '블루',
-      '네이비',
-      '블랙',
-      '그레이',
-      '연청',
-      '진청',
-      '베이지',
-      '카키',
-      '와인',
-      '갈색',
-    ],
+    '상의': ['화이트', '화이트 계열', '레드', '핑크', '오렌지', '옐로우',
+      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인', '갈색'],
     // '하의' 색상 옵션
-    '하의': [
-      '화이트',
-      '화이트 계열',
-      '레드',
-      '핑크',
-      '오렌지',
-      '옐로우',
-      '그린',
-      '블루',
-      '네이비',
-      '블랙',
-      '그레이',
-      '연청',
-      '진청',
-      '베이지',
-      '카키',
-      '와인',
-      '갈색',
-    ],
+    '하의': ['화이트', '화이트 계열', '레드', '핑크', '오렌지', '옐로우',
+      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인', '갈색'],
     // '신발' 색상 옵션
-    '신발': [
-      '화이트',
-      '화이트 계열',
-      '레드',
-      '핑크',
-      '오렌지',
-      '옐로우',
-      '그린',
-      '블루',
-      '네이비',
-      '블랙',
-      '그레이',
-      '연청',
-      '진청',
-      '베이지',
-      '카키',
-      '와인',
-      '갈색',
-    ],
+    '신발': ['화이트', '화이트 계열', '레드', '핑크', '오렌지', '옐로우',
+      '그린', '블루', '네이비', '블랙', '그레이', '연청', '진청', '베이지', '카키', '와인', '갈색'],
   };
 
   @override
@@ -343,24 +292,16 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     y /= refY;
     z /= refZ;
 
-    x = (x > 0.008856)
-        ? pow(x, 1.0 / 3.0).toDouble()
-        : (7.787 * x) + (16.0 / 116.0);
-    y = (y > 0.008856)
-        ? pow(y, 1.0 / 3.0).toDouble()
-        : (7.787 * y) + (16.0 / 116.0);
-    z = (z > 0.008856)
-        ? pow(z, 1.0 / 3.0).toDouble()
-        : (7.787 * z) + (16.0 / 116.0);
+    x = (x > 0.008856) ? pow(x, 1.0 / 3.0).toDouble() : (7.787 * x) + (16.0 / 116.0);
+    y = (y > 0.008856) ? pow(y, 1.0 / 3.0).toDouble() : (7.787 * y) + (16.0 / 116.0);
+    z = (z > 0.008856) ? pow(z, 1.0 / 3.0).toDouble() : (7.787 * z) + (16.0 / 116.0);
 
     double l = (116.0 * y) - 16.0;
     double a = 500.0 * (x - y);
     double bLab = 200.0 * (y - z);
 
     // --- ▼▼▼ [요청] LAB 값 출력 ▼▼▼ ---
-    print(
-      'Calculated LAB: L=${l.toStringAsFixed(2)}, a=${a.toStringAsFixed(2)}, b=${bLab.toStringAsFixed(2)}',
-    );
+    print('Calculated LAB: L=${l.toStringAsFixed(2)}, a=${a.toStringAsFixed(2)}, b=${bLab.toStringAsFixed(2)}');
     print('------------------------');
     // --- ▲▲▲ [요청] LAB 값 출력 ▲▲▲ ---
 
@@ -370,9 +311,9 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
 
   // --- ▼▼▼ [수정] Lab 값으로 유클리드 거리 계산 ▼▼▼ ---
   String _findClosestColor(
-    Color dominantColor,
-    List<Map<String, dynamic>> colorStandard,
-  ) {
+      Color dominantColor,
+      List<Map<String, dynamic>> colorStandard,
+      ) {
     // 1. 검정색 예외 처리 (Lab 변환 시 부정확할 수 있음)
     if (dominantColor.red < 50 &&
         dominantColor.green < 50 &&
@@ -591,9 +532,9 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                     borderRadius: BorderRadius.circular(12.0),
                     child: _processedImagePath != null
                         ? Image.file(
-                            File(_processedImagePath!),
-                            fit: BoxFit.cover,
-                          )
+                      File(_processedImagePath!),
+                      fit: BoxFit.cover,
+                    )
                         : Image.file(File(widget.imagePath), fit: BoxFit.cover),
                   ),
                 ),
@@ -633,15 +574,15 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
               onChanged: _isProcessingImage
                   ? null
                   : (String? newValue) {
-                      setState(() {
-                        _selectedSubCategory = newValue;
-                        _selectedArticleType = null;
-                        _selectedColor = null;
-                      });
-                    },
+                setState(() {
+                  _selectedSubCategory = newValue;
+                  _selectedArticleType = null;
+                  _selectedColor = null;
+                });
+              },
               items: _subCategoryMap.values.map<DropdownMenuItem<String>>((
-                String value,
-              ) {
+                  String value,
+                  ) {
                 return DropdownMenuItem<String>(
                   value: value,
                   child: Text(value),
@@ -660,11 +601,11 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
               onChanged: (_selectedSubCategory == null || _isProcessingImage)
                   ? null
                   : (String? newValue) {
-                      setState(() => _selectedArticleType = newValue);
-                    },
+                setState(() => _selectedArticleType = newValue);
+              },
               items: articleTypeOptions.map<DropdownMenuItem<String>>((
-                String value,
-              ) {
+                  String value,
+                  ) {
                 return DropdownMenuItem<String>(
                   value: value,
                   child: Text(value),
@@ -681,13 +622,13 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 border: OutlineInputBorder(),
               ),
               onChanged:
-                  (_selectedSubCategory != '상의' &&
-                      _selectedSubCategory != '하의' &&
-                      _selectedSubCategory != '신발') // [수정] 신발도 포함
+              (_selectedSubCategory != '상의' &&
+                  _selectedSubCategory != '하의' &&
+                  _selectedSubCategory != '신발') // [수정] 신발도 포함
                   ? null
                   : (String? newValue) {
-                      setState(() => _selectedColor = newValue);
-                    },
+                setState(() => _selectedColor = newValue);
+              },
               items: colorOptions.map<DropdownMenuItem<String>>((String value) {
                 return DropdownMenuItem<String>(
                   value: value,

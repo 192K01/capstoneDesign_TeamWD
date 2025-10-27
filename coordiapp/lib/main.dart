@@ -60,9 +60,9 @@ class _MainScreenState extends State<MainScreen> {
   final GlobalKey<ProfileScreenState> _profileScreenKey =
   GlobalKey<ProfileScreenState>();
   final GlobalKey<CalendarScreenState> _calendarScreenKey =
-      GlobalKey<CalendarScreenState>();
+  GlobalKey<CalendarScreenState>();
   final GlobalKey<_HomeScreenState> _homeScreenKey =
-      GlobalKey<_HomeScreenState>(); // HomeScreen 키 추가
+  GlobalKey<_HomeScreenState>(); // HomeScreen 키 추가
 
   late final List<Widget> _pages;
 
@@ -320,7 +320,7 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback onNavigateToCalendar;
   // key를 받도록 생성자 수정
   const HomeScreen({Key? key, required this.onNavigateToCalendar})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -441,9 +441,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 날씨 정보 가져오기 (기상청 API)
   Future<Map<String, dynamic>> _fetchCurrentWeather(
-    double lat,
-    double lng,
-  ) async {
+      double lat,
+      double lng,
+      ) async {
     try {
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
       final now = DateTime.now();
@@ -455,7 +455,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getUltraSrtFcst'
-        '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
+            '?pageNo=1&numOfRows=60&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny&authKey=$apiKey',
       );
       final response = await http.get(url);
 
@@ -479,7 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
             return {
               'rawTemp': double.tryParse(temp), // double? 타입
               'displayTemp':
-                  "${double.tryParse(temp)?.toStringAsFixed(1) ?? 'N/A'}°",
+              "${double.tryParse(temp)?.toStringAsFixed(1) ?? 'N/A'}°",
               'skyCondition': ptyString.isNotEmpty ? ptyString : skyString,
               'skyIcon': _getWeatherIcon(sky, pty),
             };
@@ -499,11 +499,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 코디 추천 API 호출
   Future<void> _getRecommendation(
-    String userEmail,
-    String tpoCategory,
-    double? temperature,
-    String dateString,
-  ) async {
+      String userEmail,
+      String tpoCategory,
+      double? temperature,
+      String dateString,
+      ) async {
     try {
       const String serverIp = '3.36.66.130';
       final uri = Uri.parse('http://$serverIp:5000/recommend_today');
@@ -686,48 +686,48 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 _isRecommendLoading
                     ? SizedBox(
-                        height: 220,
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const CircularProgressIndicator(),
-                              const SizedBox(height: 10),
-                              Text(
-                                _recommendStatus,
-                                style: const TextStyle(color: Colors.grey),
-                              ),
-                            ],
-                          ),
+                  height: 220,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(),
+                        const SizedBox(height: 10),
+                        Text(
+                          _recommendStatus,
+                          style: const TextStyle(color: Colors.grey),
                         ),
-                      )
-                    // ▼▼▼ [수정] _recommendedOutfitsList.isNotEmpty 로 확인 ▼▼▼
+                      ],
+                    ),
+                  ),
+                )
+                // ▼▼▼ [수정] _recommendedOutfitsList.isNotEmpty 로 확인 ▼▼▼
                     : _recommendedOutfitsList.isNotEmpty
                     ? _buildRecommendedOutfitSlides(
-                        _recommendedOutfitsList,
-                      ) // 리스트 전달
+                  _recommendedOutfitsList,
+                ) // 리스트 전달
                     : Container(
-                        height: 220,
-                        alignment: Alignment.center,
-                        child: Text(
-                          _recommendStatus.isNotEmpty
-                              ? _recommendStatus
-                              : '추천 코디를 불러올 수 없습니다.',
-                          style: TextStyle(
-                            color:
-                                _recommendStatus.contains('오류') ||
-                                    _recommendStatus.contains('실패') ||
-                                    _recommendStatus.contains('없음')
-                                ? Colors.red
-                                : Colors.grey[600],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
+                  height: 220,
+                  alignment: Alignment.center,
+                  child: Text(
+                    _recommendStatus.isNotEmpty
+                        ? _recommendStatus
+                        : '추천 코디를 불러올 수 없습니다.',
+                    style: TextStyle(
+                      color:
+                      _recommendStatus.contains('오류') ||
+                          _recommendStatus.contains('실패') ||
+                          _recommendStatus.contains('없음')
+                          ? Colors.red
+                          : Colors.grey[600],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 30),
-            const RecommendationSection(title: '내가 즐겨입는 룩'), // 기존 섹션 유지
+            // const RecommendationSection(title: '내가 즐겨입는 룩'), // 기존 섹션 유지
           ],
         ),
       ),
@@ -744,7 +744,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Text(
             "오늘의 TPO: $_recommendedTpo",
             style: const TextStyle(
-              color: Colors.deepPurple,
+              color: Colors.black,
+              fontSize: 20.0,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -766,7 +767,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- ▲▲▲ [수정] 추천 코디 '리스트'를 받아 가로 슬라이드로 만듦 ▲▲▲ ---
+// --- ▲▲▲ [수정] 추천 코디 '리스트'를 받아 가로 슬라이드로 만듦 ▲▲▲ ---
 } // _HomeScreenState End
 
 class TodayInfoCard extends StatefulWidget {
@@ -834,7 +835,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
               today.day,
             );
             return (normalizedToday.isAtSameMomentAs(startDate) ||
-                    normalizedToday.isAfter(startDate)) &&
+                normalizedToday.isAfter(startDate)) &&
                 (normalizedToday.isAtSameMomentAs(endDate) ||
                     normalizedToday.isBefore(endDate));
           } catch (e) {
@@ -843,14 +844,21 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
         }).toList();
 
         todaySchedules.sort((a, b) {
-          int getScheduleType(Map<String, dynamic> schedule, DateTime selected) {
+          int getScheduleType(
+              Map<String, dynamic> schedule,
+              DateTime selected,
+              ) {
             final startDate = DateTime.parse(schedule['startDate']);
             final endDate = DateTime.parse(schedule['endDate']);
-            final selectedDay =
-            DateTime(selected.year, selected.month, selected.day);
+            final selectedDay = DateTime(
+              selected.year,
+              selected.month,
+              selected.day,
+            );
 
             final isTrueAllDay =
-                schedule['startTime'] == '00:00' && schedule['endTime'] == '23:59';
+                schedule['startTime'] == '00:00' &&
+                    schedule['endTime'] == '23:59';
             final isFirstDay = isSameDay(startDate, selectedDay);
             final isLastDay = isSameDay(endDate, selectedDay);
             final isMultiDay = !isSameDay(startDate, endDate);
@@ -1113,115 +1121,23 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
               children: [
                 Expanded(
                   flex: 2,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text(
-                              _dateString,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-                      Expanded(
-                        flex: 3,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _skyIcon,
-                                    size: 45,
-                                    color: Colors.grey[800],
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _currentTemp,
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        _skyCondition,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.grey[800],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              if (_minTemp != null && _maxTemp != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        _minTemp!,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.blue,
-                                        ),
-                                      ),
-                                      Text(
-                                        ' / ',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                      Text(
-                                        _maxTemp!,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.red,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(
+                        _dateString,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ),
                 ),
-//                 const SizedBox(width: 16),
-//                 Expanded(
-//                   flex: 3,
-//                   child: Container(
-//                     padding: const EdgeInsets.symmetric(
-//                       vertical: 8.0,
-//                       horizontal: 12.0,
-//                     ),
+
                 const SizedBox(height: 8),
                 Expanded(
                   flex: 3,
@@ -1231,7 +1147,6 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                       color: Colors.grey[200],
                       borderRadius: BorderRadius.circular(12),
                     ),
-//                     child: _buildTodayScheduleSection(),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -1270,8 +1185,7 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6.0),
                             child: Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
                                   _minTemp!,
@@ -1303,6 +1217,24 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 3,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                vertical: 8.0,
+                horizontal: 12.0,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _buildTodayScheduleSection(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1326,7 +1258,8 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
       if (isTrueAllDay) {
         final startDateFormat = DateFormat('M. d');
         final endDateFormat = DateFormat('M. d');
-        timeText = '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
+        timeText =
+        '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
       } else if (isMultiDay) {
         if (isLastDay) {
           timeText = '00:00 - $endTime';
@@ -1359,8 +1292,10 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
             children: [
               Text(
                 title,
-                style:
-                const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
@@ -1412,77 +1347,6 @@ class _TodayInfoCardState extends State<TodayInfoCard> {
     );
   }
 }
-
-// Widget _buildScheduleItem(Map<String, dynamic> schedule) {
-//   final String title = schedule['title'] ?? '제목 없음';
-//   final String startTime = schedule['startTime'] ?? '';
-//   final String endTime = schedule['endTime'] ?? '';
-//   final isTrueAllDay = startTime == '00:00' && endTime == '23:59';
-//
-//   String timeText;
-//   try {
-//     final startDate = DateTime.parse(schedule['startDate']);
-//     final endDate = DateTime.parse(schedule['endDate']);
-//     final today = DateTime.now();
-//     final selectedDay = DateTime(today.year, today.month, today.day);
-//
-//     final isFirstDay = isSameDay(startDate, selectedDay);
-//     final isLastDay = isSameDay(endDate, selectedDay);
-//     final isMultiDay = !isSameDay(startDate, endDate);
-//
-//     if (isTrueAllDay) {
-//       final startDateFormat = DateFormat('M. d');
-//       final endDateFormat = DateFormat('M. d');
-//       timeText =
-//       '${startDateFormat.format(startDate)} - ${endDateFormat.format(endDate)}';
-//     } else if (isMultiDay) {
-//       if (isLastDay) {
-//         timeText = '00:00 - $endTime';
-//       } else if (isFirstDay) {
-//         timeText = '$startTime 부터';
-//       } else {
-//         timeText = "하루종일";
-//       }
-//     } else {
-//       timeText = '$startTime - $endTime';
-//     }
-//   } catch (e) {
-//     timeText = "시간 정보 없음";
-//   }
-//
-//   return Row(
-//     children: [
-//       Container(
-//         width: 4,
-//         height: 24,
-//         decoration: BoxDecoration(
-//           color: Colors.lightBlue,
-//           borderRadius: BorderRadius.circular(2),
-//         ),
-//       ),
-//       const SizedBox(width: 8),
-//       Expanded(
-//         child: Column(
-//           crossAxisAlignment: CrossAxisAlignment.start,
-//           children: [
-//             Text(
-//               title,
-//               style: const TextStyle(
-//                 fontWeight: FontWeight.bold,
-//                 fontSize: 13,
-//               ),
-//               overflow: TextOverflow.ellipsis,
-//             ),
-//             Text(
-//               timeText,
-//               style: const TextStyle(color: Colors.grey, fontSize: 10),
-//             ),
-//           ],
-//         ),
-//       ),
-//     ],
-//   );
-// }
 
 class RecommendationSection extends StatelessWidget {
   final String title;
@@ -1544,26 +1408,26 @@ class ClothingItem extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: (imagePathOrUrl != null && imagePathOrUrl.isNotEmpty)
             ? Image.network(
-                imagePathOrUrl.startsWith('http')
-                    ? imagePathOrUrl
-                    : '$serverBaseUrl/$imagePathOrUrl',
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  print("Image load error for $imagePathOrUrl: $error");
-                  return const Center(
-                    child: Icon(Icons.error_outline, color: Colors.grey),
-                  );
-                },
-              )
+          imagePathOrUrl.startsWith('http')
+              ? imagePathOrUrl
+              : '$serverBaseUrl/$imagePathOrUrl',
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            print("Image load error for $imagePathOrUrl: $error");
+            return const Center(
+              child: Icon(Icons.error_outline, color: Colors.grey),
+            );
+          },
+        )
             : const Center(
-                child: Icon(Icons.checkroom, color: Colors.white, size: 50),
-              ),
+          child: Icon(Icons.checkroom, color: Colors.white, size: 50),
+        ),
       ),
     );
   }

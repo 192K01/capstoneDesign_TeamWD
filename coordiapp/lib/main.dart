@@ -727,7 +727,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 30),
-            const RecommendationSection(title: '내가 즐겨입는 룩'), // 기존 섹션 유지
+            // const RecommendationSection(title: '내가 즐겨입는 룩'), // 기존 섹션 유지
           ],
         ),
       ),
@@ -744,7 +744,8 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Text(
             "오늘의 TPO: $_recommendedTpo",
             style: const TextStyle(
-              color: Colors.deepPurple,
+              color: Colors.black,
+              fontSize: 20.0,
               fontWeight: FontWeight.bold,
             ),
           ),

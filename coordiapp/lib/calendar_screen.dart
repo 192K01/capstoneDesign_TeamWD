@@ -35,6 +35,11 @@ class CalendarScreenState extends State<CalendarScreen> {
 
   Position? _currentPosition;
 
+  Map<String, dynamic>? _recommendedOutfit; // 추천된 첫 번째 코디
+  bool _isRecommendLoading = true; // 코디 로딩 상태
+  String _recommendStatus = "Looks 로딩 중..."; // 코디 로딩 메시지
+  double? _rawTempForApi; // API 전송용 대표 온도
+
   @override
   void initState() {
     super.initState();
@@ -57,20 +62,48 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  // --- ▼▼▼ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▼▼▼ ---
   Future<void> _loadInitialData() async {
-    await _loadSchedulesFromServer();
-    try {
-      _currentPosition = await _getCurrentLocation();
-    } catch (e) {
-      if (mounted) setState(() => _skyCondition = e.toString());
+    Position? fetchedPosition;
+    String? locationError;
+
+    // 1. 일정 로드와 위치 정보 가져오기를 병렬로 실행
+    final scheduleFuture = _loadSchedulesFromServer();
+    final locationFuture = _getCurrentLocation()
+        .then((pos) {
+          fetchedPosition = pos; // 성공 시 위치 저장
+        })
+        .catchError((e) {
+          locationError = e.toString(); // 실패 시 에러 메시지 저장
+        });
+
+    // 2. 두 작업이 모두 완료될 때까지 대기
+    await Future.wait([scheduleFuture, locationFuture]);
+
+    // 3. (mounted 확인 후) 위치 정보 및 에러 상태 업데이트
+    if (mounted) {
+      setState(() {
+        if (fetchedPosition != null) {
+          _currentPosition = fetchedPosition;
+        }
+        if (locationError != null) {
+          _skyCondition = locationError!;
+        }
+      });
     }
+
+    // 4. 날씨 정보 로드 및 일정 필터링 실행
+    //    (_onDaySelected는 내부적으로 _currentPosition을 사용함)
     await _onDaySelected(_selectedDay!, _focusedDay);
+
+    // 5. 모든 초기 로드가 완료되었으므로 로딩 상태 해제
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
   }
+  // --- ▲▲▲ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▲▲▲ ---
 
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -195,11 +228,15 @@ class CalendarScreenState extends State<CalendarScreen> {
       _maxTemp = null;
       _filterSchedules(selectedDay);
       _setDateString(selectedDay);
+
+      _isRecommendLoading = true;
     });
 
     if (_currentPosition != null) {
       await _fetchWeather(_currentPosition!, selectedDay);
     }
+
+    await _getRecommendation();
 
     if (mounted) {
       setState(() {
@@ -237,6 +274,7 @@ class CalendarScreenState extends State<CalendarScreen> {
       // D+3 (글피) 이후
       // 단기예보 API 범위 밖이므로 "예보 없음" 처리
       if (mounted) {
+        _rawTempForApi = null;
         setState(() {
           _currentTemp = "";
           _skyCondition = "예보 없음";
@@ -303,6 +341,7 @@ class CalendarScreenState extends State<CalendarScreen> {
           if (temp.isNotEmpty && mounted) {
             final ptyString = _getPtyString(pty);
             final skyString = _getSkyString(sky);
+            _rawTempForApi = double.tryParse(temp);
             setState(() {
               _currentTemp = "${double.parse(temp).toStringAsFixed(1)}°";
               _skyCondition = ptyString.isNotEmpty ? ptyString : skyString;
@@ -382,12 +421,14 @@ class CalendarScreenState extends State<CalendarScreen> {
           if (temp.isNotEmpty && mounted) {
             final ptyString = _getPtyString(pty);
             final skyString = _getSkyString(sky);
+            _rawTempForApi = double.tryParse(temp);
             setState(() {
               _currentTemp = "${double.parse(temp).toStringAsFixed(1)}°";
               _skyCondition = ptyString.isNotEmpty ? ptyString : skyString;
               _skyIcon = _getWeatherIcon(sky, pty);
             });
           } else {
+            _rawTempForApi = null;
             if (mounted) setState(() => _skyCondition = "예보 없음");
           }
         }
@@ -896,16 +937,49 @@ class CalendarScreenState extends State<CalendarScreen> {
             ),
           ],
         ),
+        // --- ▼▼▼ [수정됨] 코디 카드 UI로 변경 ▼▼▼ ---
         Container(
-          height: 170,
+          height: 170, // 기존 레이아웃 높이 유지
+          width: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.grey[200],
+            color: Colors.grey[200], // 카드 배경색
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Center(
-            child: Icon(Icons.checkroom, color: Colors.white, size: 50),
-          ),
+          clipBehavior: Clip.antiAlias, // 카드의 둥근 모서리 적용
+          child: _isRecommendLoading
+              ? Center(
+                  // 로딩 중
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(strokeWidth: 2),
+                      const SizedBox(height: 8),
+                      Text(
+                        _recommendStatus,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                )
+              : _recommendedOutfit != null
+              ? RecommendedOutfitCard(outfitData: _recommendedOutfit!) // 성공
+              : Center(
+                  // 데이터 없음 또는 오류
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text(
+                      _recommendStatus,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
         ),
+        // --- ▲▲▲ [수정됨] 코디 카드 UI로 변경 ▲▲▲ ---
       ],
     );
   }
@@ -1026,6 +1100,110 @@ class CalendarScreenState extends State<CalendarScreen> {
       ],
     );
   }
+
+  // --- ▼▼▼ [추가됨] 선택된 날의 TPO를 반환하는 헬퍼 함수 ▼▼▼ ---
+  String _getTpoForSelectedDay() {
+    // _selectedDaySchedules는 _onDaySelected에서 이미 필터링됨
+    if (_selectedDaySchedules.isEmpty) {
+      return 'Casual & Daily'; // 일정이 없으면 기본 TPO
+    }
+
+    final firstSchedule = _selectedDaySchedules.first;
+    // main.dart와 동일한 TPO 매핑
+    const tpoMapping = {
+      '일상&캐주얼': 'Casual & Daily',
+      '비즈니스&포멀': 'Business & Formal',
+      '특별한 날&데이트': 'Special Occasion & Date',
+      '활동적인 날': 'Active Day',
+    };
+
+    final String? tpo1 = firstSchedule['tpo1'];
+    final String? tpo2 = firstSchedule['tpo2'];
+    final String rawTpo = (tpo1 != null && tpo1.isNotEmpty)
+        ? tpo1
+        : (tpo2 != null && tpo2.isNotEmpty)
+        ? tpo2
+        : '일상&캐주얼'; // 일정에 TPO가 없으면 기본값
+
+    return tpoMapping[rawTpo] ?? 'Casual & Daily';
+  }
+  // --- ▲▲▲ [추가됨] 선택된 날의 TPO를 반환하는 헬퍼 함수 ▲▲▲ ---
+
+  // --- ▼▼▼ [추가됨] 코디 추천 API 호출 함수 ▼▼▼ ---
+  Future<void> _getRecommendation() async {
+    if (mounted) {
+      setState(() {
+        _isRecommendLoading = true;
+        _recommendedOutfit = null; // 새 날짜 선택 시 이전 코디 제거
+        _recommendStatus = "코디 추천 로딩 중...";
+      });
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+    if (userEmail == null) {
+      if (mounted) {
+        setState(() {
+          _isRecommendLoading = false;
+          _recommendStatus = "로그인 필요";
+        });
+      }
+      return;
+    }
+
+    // 1. TPO 가져오기 (이미 로드된 일정에서)
+    final tpoCategory = _getTpoForSelectedDay();
+
+    // 2. 날짜와 온도 가져오기 (State 변수에서)
+    final dateString = DateFormat('yyyy-MM-dd').format(_selectedDay!);
+    final temperature = _rawTempForApi; // 날씨 함수에서 저장한 값
+
+    try {
+      const String serverIp = '3.36.66.130';
+      final uri = Uri.parse('http://$serverIp:5000/recommend_today');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': userEmail,
+          'tpo': tpoCategory,
+          'date': dateString,
+          'temperature': temperature,
+        }),
+      );
+
+      if (mounted) {
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          final outfitsList = List<Map<String, dynamic>>.from(
+            data['recommended_outfits_list'] ?? [],
+          );
+
+          if (outfitsList.isNotEmpty) {
+            // "첫 번째" 코디만 저장
+            setState(() {
+              _recommendedOutfit = outfitsList.first;
+              _recommendStatus = "'$tpoCategory' 추천 코디";
+            });
+          } else {
+            setState(() {
+              _recommendStatus = "'$tpoCategory'에 맞는 코디가 없습니다.";
+            });
+          }
+        } else {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          setState(() => _recommendStatus = data['message'] ?? '추천 실패');
+        }
+      }
+    } catch (e) {
+      debugPrint("Recommendation request error: $e");
+      if (mounted) setState(() => _recommendStatus = '네트워크 오류');
+    } finally {
+      if (mounted) setState(() => _isRecommendLoading = false);
+    }
+  }
+
+  // --- ▲▲▲ [추가됨] 코디 추천 API 호출 함수 ▲▲▲ ---
 } // CalendarScreen 끝
 
 class ScheduleDetailDialog extends StatelessWidget {
@@ -1438,3 +1616,84 @@ class ScheduleDetailDialog extends StatelessWidget {
     );
   }
 }
+
+// --- ▼▼▼ [추가됨] main.dart에서 복사해 온 'RecommendedOutfitCard' 위젯 ▼▼▼ ---
+class RecommendedOutfitCard extends StatelessWidget {
+  final Map<String, dynamic> outfitData;
+  const RecommendedOutfitCard({super.key, required this.outfitData});
+
+  // (상수) 서버 URL
+  static const String serverBaseUrl = 'http://3.36.66.130:5000';
+
+  @override
+  Widget build(BuildContext context) {
+    final topData = outfitData['top'] as Map<String, dynamic>?;
+    final bottomData = outfitData['bottom'] as Map<String, dynamic>?;
+    final shoesData = outfitData['shoes'] as Map<String, dynamic>?;
+
+    return Container(
+      // width: 160, // 부모(SizedBox)의 width를 따르므로 너비 지정 불필요
+      // margin: const EdgeInsets.only(right: 12.0), // 부모(SizedBox)가 있으므로 마진 불필요
+      child: Card(
+        elevation: 0,
+        color: Colors.grey[200], // 카드 배경색
+        // shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // 부모가 이미 적용
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch, // 자식들 꽉 채우기
+          children: [
+            // --- 상의 (1/2 높이) ---
+            Expanded(
+              flex: 2, // 비율 2
+              child: _buildImage(topData),
+            ),
+            // --- 하의 (1/2 높이) ---
+            Expanded(
+              flex: 2, // 비율 2
+              child: _buildImage(bottomData),
+            ),
+            // --- 신발 (1/1 높이) ---
+            Expanded(
+              flex: 1, // 비율 1 (더 작게)
+              child: _buildImage(shoesData),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 이미지 위젯 생성 헬퍼 (contain 적용, 흰색 배경)
+  Widget _buildImage(Map<String, dynamic>? itemData) {
+    final imagePath = itemData?['clothingImg'] as String?;
+    final bgColor = Colors.grey[200]; // 배경색을 카드의 grey[200]으로 통일
+
+    if (itemData == null || imagePath == null || imagePath.isEmpty) {
+      return Container(width: double.infinity, color: bgColor);
+    }
+
+    final imageUrl = imagePath.startsWith('http')
+        ? imagePath
+        : '$serverBaseUrl/$imagePath';
+    return Container(
+      width: double.infinity,
+      color: bgColor,
+      child: Image.network(
+        imageUrl,
+        fit: BoxFit.contain, // <<< contain 적용
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+        },
+        errorBuilder: (context, error, stackTrace) {
+          print("Image load error for $imageUrl: $error");
+          return const Center(
+            child: Icon(Icons.error_outline, color: Colors.grey),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// --- ▲▲▲ [추가됨] main.dart에서 복사해 온 'RecommendedOutfitCard' 위젯 ▲▲▲ ---

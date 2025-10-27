@@ -474,15 +474,7 @@ class _ScheduleAddScreenState extends State<ScheduleAddScreen> {
             title: '기본일정',
             subtitle: '내 캘린더',
           ),
-          const SizedBox(height: 16),
-          GestureDetector(
-            onTap: _navigateToLocationSearch,
-            child: _buildOptionTile(
-              icon: Icons.location_on_outlined,
-              title: _locationName,
-              subtitle: _locationAddress,
-            ),
-          ),
+
           const SizedBox(height: 16),
           GestureDetector(
             onTap: _navigateToLocationSearch,

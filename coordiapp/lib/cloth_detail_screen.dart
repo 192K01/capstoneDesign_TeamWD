@@ -94,6 +94,15 @@ class ClothDetailScreen extends StatelessWidget {
     final String color = cloth['color'] ?? '색상 없음';
     final String memo = cloth['memo'] ?? '메모가 없어요. 클릭하여 수정할 수 있어요.';
 
+    // --- ▼▼▼ [추가] 서버 주소 및 전체 이미지 URL 생성 ▼▼▼ ---
+    const String serverBaseUrl = 'http://3.36.66.130:5000';
+    final String imageUrl = imagePath.isNotEmpty
+        ? (imagePath.startsWith('http')
+              ? imagePath
+              : '$serverBaseUrl/$imagePath')
+        : '';
+    // --- ▲▲▲ [추가] 서버 주소 및 전체 이미지 URL 생성 ▲▲▲ ---
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -143,14 +152,20 @@ class ClothDetailScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.grey[200],
                         borderRadius: BorderRadius.circular(12),
-                        image: imagePath.isNotEmpty
+                        image:
+                            imageUrl
+                                .isNotEmpty // imagePath -> imageUrl
                             ? DecorationImage(
-                                image: FileImage(File(imagePath)),
+                                image: NetworkImage(
+                                  imageUrl,
+                                ), // FileImage -> NetworkImage
                                 fit: BoxFit.cover,
                               )
                             : null,
                       ),
-                      child: imagePath.isEmpty
+                      child:
+                          imageUrl
+                              .isEmpty // imagePath -> imageUrl
                           ? const Center(
                               child: Icon(
                                 Icons.checkroom,
@@ -175,15 +190,8 @@ class ClothDetailScreen extends StatelessWidget {
                         '$subCategory > $articleType',
                       ),
                       _buildInfoRow(Icons.color_lens_outlined, color),
-                      _buildInfoRow(
-                        Icons.calendar_today_outlined,
-                        '24. 12. 17. 등록',
-                      ), // 등록일은 예시 데이터입니다.
-                      _buildInfoRow(
-                        Icons.history,
-                        '착용기록 4회',
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                      ),
+                      // _buildInfoRow(Icons.calendar_today_outlined, '24. 12. 17. 등록'), // [삭제됨]
+                      // _buildInfoRow(Icons.history, '착용기록 4회', trailing: const Icon(Icons.arrow_forward_ios, size: 16)), // [삭제됨]
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -200,23 +208,8 @@ class ClothDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // 새로운 룩 생성하기 버튼
-            ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-              label: const Text(
-                '이 옷으로 새로운 룩 생성하기',
-                style: TextStyle(color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyan,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-            const SizedBox(height: 24),
+            // [삭제됨] 새로운 룩 생성하기 버튼
+            // ElevatedButton.icon( ... ),
 
             // Discovery 섹션
             const Text(
@@ -231,31 +224,11 @@ class ClothDetailScreen extends StatelessWidget {
                 children: List.generate(3, (index) => _buildDiscoveryItem()),
               ),
             ),
-            const SizedBox(height: 24),
 
-            // Review 섹션
-            const Text(
-              'Review',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                ...List.generate(
-                  4,
-                  (index) =>
-                      const Icon(Icons.star, color: Colors.amber, size: 28),
-                ),
-                const Icon(Icons.star_half, color: Colors.amber, size: 28),
-                const SizedBox(width: 8),
-                const Text(
-                  '4.5',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Text('좋았음.', style: TextStyle(color: Colors.grey)),
+            // [삭제됨] Review 섹션
+            // const SizedBox(height: 24),
+            // const Text( ... 'Review' ... ),
+            // ... (Review 관련 코드 모두 삭제)
           ],
         ),
       ),

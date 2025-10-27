@@ -6,8 +6,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
-// database_helper.dart가 lib/data/ 폴더에 있다면 아래 import를 사용하세요.
-import 'data/database_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AddClothingScreen extends StatefulWidget {

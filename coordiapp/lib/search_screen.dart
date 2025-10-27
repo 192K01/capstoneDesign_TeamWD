@@ -20,6 +20,11 @@ class SearchScreenState extends State<SearchScreen>
   bool _isLoading = true;
   String _selectedTpoFilter = '전체'; // 현재 선택된 TPO 필터
 
+  // --- ▼▼▼ [추가됨] 코디 선택 관련 상태 변수 ▼▼▼ ---
+  bool _isSelectionMode = false;
+  Set<int> _selectedOutfitIds = {};
+  // --- ▲▲▲ [추가됨] 코디 선택 관련 상태 변수 ▲▲▲ --
+
   // TPO 필터 옵션 정의 (UI 표시용 한국어, 서버 요청용 영어 매핑)
   final Map<String, String> _tpoFilterOptions = {
     '전체': '', // '전체'는 쿼리 파라미터 없이 요청
@@ -116,19 +121,123 @@ class SearchScreenState extends State<SearchScreen>
     _fetchSavedOutfits(); // ProfileScreen의 옷 목록 로드 함수 호출
   }
 
+  // --- ▼▼▼ [추가됨] 코디 선택/해제 토글 함수 ▼▼▼ ---
+  void _toggleSelection(int outfitId) {
+    setState(() {
+      if (_selectedOutfitIds.contains(outfitId)) {
+        _selectedOutfitIds.remove(outfitId);
+      } else {
+        _selectedOutfitIds.add(outfitId);
+      }
+      // 선택된 항목이 1개 이상이면 선택 모드 유지, 0개면 선택 모드 해제
+      _isSelectionMode = _selectedOutfitIds.isNotEmpty;
+    });
+  }
+  // --- ▲▲▲ [추가됨] 코디 선택/해제 토글 함수 ▲▲▲ ---
+
+  // --- ▼▼▼ [추가됨] 코디 선택 모드 취소 함수 ▼▼▼ ---
+  void _cancelSelection() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedOutfitIds.clear();
+    });
+  }
+  // --- ▲▲▲ [추가됨] 코디 선택 모드 취소 함수 ▲▲▲ ---
+
+  // --- ▼▼▼ [추가됨] 삭제 확인 다이얼로그 표시 함수 ▼▼▼ ---
+  Future<void> _showDeleteConfirmation() async {
+    final int count = _selectedOutfitIds.length;
+    if (count == 0) return;
+
+    final bool? confirmed = await showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('삭제 확인'),
+          content: Text('$count개의 코디를 정말 삭제하시겠습니까?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false), // 아니요
+              child: const Text('아니요'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true), // 예
+              child: const Text('예', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _deleteSelectedOutfits();
+    }
+  }
+  // --- ▲▲▲ [추가됨] 삭제 확인 다이얼로그 표시 함수 ▲▲▲ ---
+
+  // --- ▼▼▼ [추가됨] 선택된 코디 삭제 API 호출 함수 ▼▼▼ ---
+  Future<void> _deleteSelectedOutfits() async {
+    // !중요: 이 API는 서버(server.py)에 새로 구현해야 합니다.
+    // (이 코드는 서버에 POST /outfits/delete 엔드포인트가 있다고 가정합니다.)
+    const String serverIp = '3.36.66.130';
+    final uri = Uri.parse('http://$serverIp:5000/outfits/delete');
+    final idsToDelete = _selectedOutfitIds.toList();
+
+    try {
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        // 'outfit_ids'라는 키로 ID 리스트를 JSON 본문에 담아 전송
+        body: jsonEncode({'outfit_ids': idsToDelete}),
+      );
+
+      if (mounted) {
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('코디가 삭제되었습니다.')));
+          // 삭제 성공 후, 선택 모드 해제 및 목록 새로고침
+          _cancelSelection();
+          await _fetchSavedOutfits();
+        } else {
+          throw Exception('서버 삭제 실패: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('삭제 중 오류 발생: $e')));
+      }
+    }
+  }
+  // --- ▲▲▲ [추가됨] 선택된 코디 삭제 API 호출 함수 ▲▲▲ ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      // --- ▼▼▼ [수정됨] 선택 모드에 따라 AppBar 변경 ▼▼▼ ---
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          '저장된 코디',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        // 선택 모드일 때 'X' 버튼(취소) 표시
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close, color: Colors.black),
+                onPressed: _cancelSelection,
+              )
+            : null,
+        // 선택 모드일 때 선택된 개수 표시
+        title: Text(
+          _isSelectionMode ? '${_selectedOutfitIds.length}개 선택' : '저장된 코디',
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        // 검색창 대신 AppBar 사용 (필요시 검색 기능 추가)
       ),
+      // --- ▲▲▲ [수정됨] 선택 모드에 따라 AppBar 변경 ▲▲▲ ---
       body: Column(
         children: [
           _buildTpoFilterBar(), // TPO 필터 버튼 바
@@ -138,6 +247,7 @@ class SearchScreenState extends State<SearchScreen>
           ),
         ],
       ),
+      bottomNavigationBar: _isSelectionMode ? _buildDeleteButton() : null,
     );
   }
 
@@ -183,7 +293,36 @@ class SearchScreenState extends State<SearchScreen>
     );
   }
 
-  // 저장된 코디 그리드 UI 생성
+  // --- ▼▼▼ [추가됨] 하단 삭제 버튼 위젯 ▼▼▼ ---
+  Widget _buildDeleteButton() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        12,
+        16,
+        16 + MediaQuery.of(context).padding.bottom / 2,
+      ),
+      color: Colors.white,
+      child: ElevatedButton.icon(
+        icon: const Icon(Icons.delete_outline, color: Colors.white),
+        label: Text(
+          '삭제하기 (${_selectedOutfitIds.length})',
+          style: const TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        onPressed: _showDeleteConfirmation,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red,
+          minimumSize: const Size(double.infinity, 50),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+  // --- ▲▲▲ [추가됨] 하단 삭제 버튼 위젯 ▲▲▲ ---
+
+  // --- ▼▼▼ [수정됨] 그리드 아이템에 GestureDetector 및 선택 효과 추가 ▼▼▼ ---
   Widget _buildResultsGrid() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -194,19 +333,58 @@ class SearchScreenState extends State<SearchScreen>
     return GridView.builder(
       padding: const EdgeInsets.all(16.0),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2, // 2열 그리드
+        crossAxisCount: 2,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        childAspectRatio: 0.7, // 카드 비율 조정
+        childAspectRatio: 0.7,
       ),
       itemCount: _savedOutfits.length,
       itemBuilder: (context, index) {
         final outfit = _savedOutfits[index];
-        // 새로운 SavedOutfitCard 위젯 사용
-        return SavedOutfitCard(outfitData: outfit);
+        // 'outfit_id'가 null일 경우를 대비하여 기본값(예: -1) 설정
+        final int outfitId = outfit['outfit_id'] as int? ?? -1;
+        final bool isSelected = _selectedOutfitIds.contains(outfitId);
+
+        return GestureDetector(
+          onLongPress: () {
+            if (outfitId != -1) _toggleSelection(outfitId); // 꾹 눌러서 선택
+          },
+          onTap: () {
+            if (_isSelectionMode && outfitId != -1) {
+              _toggleSelection(outfitId); // 선택 모드에서 탭하여 선택/해제
+            } else {
+              // TODO: (선택 사항) 선택 모드가 아닐 때 탭하면 코디 상세 화면으로 이동
+            }
+          },
+          child: Stack(
+            fit: StackFit.expand, // Stack이 Card 크기에 맞게 꽉 차도록
+            children: [
+              // 1. 코디 카드
+              SavedOutfitCard(outfitData: outfit),
+
+              // 2. 선택됐을 때 보여줄 오버레이
+              if (isSelected)
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5), // 반투명 검은색
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.check_circle, // 체크 아이콘
+                      color: Colors.white,
+                      size: 50,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
       },
     );
   }
+
+  // --- ▲▲▲ [수정됨] 그리드 아이템에 GestureDetector 및 선택 효과 추가 ▲▲▲ ---
 } // SearchScreenState End
 
 // --- ▼▼▼ [수정됨] 저장된 코디 카드 위젯 (main.dart와 동일한 레이아웃) ▼▼▼ ---

@@ -242,12 +242,12 @@ class _MainScreenState extends State<MainScreen> {
                 label: '옷 추가하기',
                 onTap: _addClothingItem,
               ),
-              const SizedBox(height: 16),
-              _buildMenuItem(
-                icon: Icons.dry_cleaning,
-                label: '룩 추가하기',
-                onTap: () {},
-              ),
+              // const SizedBox(height: 16),
+              // _buildMenuItem(
+              //   icon: Icons.dry_cleaning,
+              //   label: '룩 추가하기',
+              //   onTap: () {},
+              // ),
               const SizedBox(height: 16),
               _buildMenuItem(
                 icon: Icons.calendar_today,

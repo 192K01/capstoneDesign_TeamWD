@@ -63,46 +63,82 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // --- ▼▼▼ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▼▼▼ ---
+  // --- ▼▼▼ [수정] 초기 데이터 로딩 최적화 (일정 먼저 로드) ▼▼▼ ---
   Future<void> _loadInitialData() async {
+    // Phase 1: 필수 데이터(일정)만 로드
+    // _isLoading = true는 State의 기본값입니다.
+
+    // 1. 일정 로드
+    await _loadSchedulesFromServer();
+
+    // 2. 오늘 날짜 기준으로 초기 필터링 및 날짜 문자열 설정
+    _filterSchedules(_selectedDay!);
+    _setDateString(_selectedDay!);
+
+    // 3. (Phase 1 완료) 메인 로딩 스피너를 끄고 UI를 그림
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+
+    // 4. (Phase 2 시작) UI가 그려진 후, 나머지(위치, 날씨, 코디)를
+    //    백그라운드에서 로드 (await 안함)
+    _loadSecondaryData();
+  }
+  // --- ▲▲▲ [수정] 초기 데이터 로딩 최적화 (일정 먼저 로드) ▲▲▲ ---
+
+
+  // --- ▼▼▼ [추가] 2단계(위치, 날씨, 코디) 로딩 함수 ▼▼▼ ---
+  Future<void> _loadSecondaryData() async {
+    // 1. 날씨와 코디 카드의 개별 로딩 스피너를 활성화
+    if (mounted) {
+      setState(() {
+        _isWeatherLoading = true;
+        _isRecommendLoading = true; // State 기본값이 true이긴 하나 명시적으로 설정
+        _skyCondition = "로딩 중...";
+      });
+    }
+
+    // 2. 위치 정보 가져오기 시도
     Position? fetchedPosition;
     String? locationError;
 
-    // 1. 일정 로드와 위치 정보 가져오기를 병렬로 실행
-    final scheduleFuture = _loadSchedulesFromServer();
-    final locationFuture = _getCurrentLocation().then((pos) {
-      fetchedPosition = pos; // 성공 시 위치 저장
-    }).catchError((e) {
-      locationError = e.toString(); // 실패 시 에러 메시지 저장
-    });
+    try {
+      fetchedPosition = await _getCurrentLocation();
+    } catch (e) {
+      locationError = e.toString();
+    }
 
-    // 2. 두 작업이 모두 완료될 때까지 대기
-    await Future.wait([scheduleFuture, locationFuture]);
-
-    // 3. (mounted 확인 후) 위치 정보 및 에러 상태 업데이트
+    // 3. 위치 정보 상태 업데이트
     if (mounted) {
       setState(() {
         if (fetchedPosition != null) {
           _currentPosition = fetchedPosition;
         }
         if (locationError != null) {
-          _skyCondition = locationError!;
+          _skyCondition = locationError; // 날씨 카드에 에러 메시지 표시
         }
       });
     }
 
-    // 4. 날씨 정보 로드 및 일정 필터링 실행
-    //    (_onDaySelected는 내부적으로 _currentPosition을 사용함)
-    await _onDaySelected(_selectedDay!, _focusedDay);
-
-    // 5. 모든 초기 로드가 완료되었으므로 로딩 상태 해제
+    // 4. 날씨 정보 로드 (위치 정보가 있어야 가능)
+    if (_currentPosition != null) {
+      await _fetchWeather(_currentPosition!, _selectedDay!);
+    }
+    // 날씨 로드가 끝나면 개별 스피너 끔
     if (mounted) {
       setState(() {
-        _isLoading = false;
+        _isWeatherLoading = false;
       });
     }
+
+    // 5. 코디 추천 로드 (날씨 정보(_rawTempForApi)가 필요)
+    await _getRecommendation();
+    // _isRecommendLoading = false는 _getRecommendation 함수 내부의
+    // finally 블록에서 자동으로 처리됩니다.
   }
-  // --- ▲▲▲ [수정] 초기 데이터 로딩 최적화 (병렬 처리) ▲▲▲ ---
+  // --- ▲▲▲ [추가] 2단계(위치, 날씨, 코디) 로딩 함수 ▲▲▲ ---
 
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -204,31 +240,53 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
-    setState(() {
-      _selectedDay = selectedDay;
-      _focusedDay = focusedDay;
-      _isWeatherLoading = true;
-      _currentTemp = "";
-      _skyCondition = "로딩 중...";
-      _minTemp = null;
-      _maxTemp = null;
-      _filterSchedules(selectedDay);
-      _setDateString(selectedDay);
+    // --- ▼▼▼ [수정] 상태 초기화 로직 전면 수정 ▼▼▼ ---
 
-      _isRecommendLoading = true;
+    // 1. 모든 관련 상태 변수를 setState 이전에 직접 업데이트합니다.
+    _selectedDay = selectedDay;
+    _focusedDay = focusedDay;
+
+    // 2. 날씨 관련 상태를 모두 리셋합니다.
+    _isWeatherLoading = true;
+    _currentTemp = "";
+    _skyCondition = "로딩 중...";
+    _minTemp = null;
+    _maxTemp = null;
+    _rawTempForApi = null; // (중요) 이전 날짜의 온도 값을 제거합니다.
+
+    // 3. 코디 추천 관련 상태를 모두 리셋합니다.
+    _isRecommendLoading = true;
+    _recommendedOutfit = null; // (중요) 이전 날짜의 코디를 제거합니다.
+    _recommendStatus = "Looks 로딩 중...";
+
+    // 4. 일정을 새 날짜 기준으로 동기적으로 필터링합니다.
+    _filterSchedules(selectedDay);
+
+    // 5. 날짜 문자열을 업데이트합니다.
+    _setDateString(selectedDay);
+
+    // 6. 위에서 변경된 모든 상태를 UI에 한 번에 반영합니다.
+    setState(() {
+      // 이 블록은 UI 갱신을 트리거하는 역할만 합니다.
     });
 
+    // 7. UI가 '로딩 중'으로 변경된 후, 비동기 데이터 로드를 시작합니다.
     if (_currentPosition != null) {
+      // 날씨를 먼저 가져와서 _rawTempForApi를 설정합니다.
       await _fetchWeather(_currentPosition!, selectedDay);
     }
 
+    // 8. 날씨 정보가 업데이트된 후, 코디 추천을 받습니다.
     await _getRecommendation();
 
+    // 9. 날씨 로딩 상태를 해제합니다.
+    // (코디 로딩은 _getRecommendation 내부의 'finally' 블록에서 처리됨)
     if (mounted) {
       setState(() {
         _isWeatherLoading = false;
       });
     }
+    // --- ▲▲▲ [수정] 상태 초기화 로직 전면 수정 ▲▲▲ ---
   }
 
   Future<void> _fetchWeather(Position position, DateTime date) async {
@@ -571,12 +629,22 @@ class CalendarScreenState extends State<CalendarScreen> {
       barrierDismissible: true,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (BuildContext context) {
+        // --- ▼▼▼ [수정] 날씨 정보 파라미터 5개 추가 ▼▼▼ ---
         return ScheduleDetailDialog(
           schedule: schedule,
+          date: _selectedDay!,
+          temperature: _rawTempForApi,
           onDeleteConfirmed: () async {
             await _deleteSchedule(schedule['schedule_id']);
           },
+          // 날씨 정보 전달
+          currentTemp: _currentTemp,
+          skyCondition: _skyCondition,
+          skyIcon: _skyIcon,
+          minTemp: _minTemp,
+          maxTemp: _maxTemp,
         );
+        // --- ▲▲▲ [수정] 날씨 정보 파라미터 5개 추가 ▲▲▲ ---
       },
     );
   }
@@ -601,10 +669,10 @@ class CalendarScreenState extends State<CalendarScreen> {
         scrolledUnderElevation: 0,
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: const IconButton(
-          icon: Icon(Icons.menu, color: Colors.black),
-          onPressed: null,
-        ),
+        // leading: const IconButton(
+        //   icon: Icon(Icons.menu, color: Colors.black),
+        //   onPressed: null,
+        // ),
         title: const Text('Calendar', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22)),
         centerTitle: true,
         actions: [
@@ -612,10 +680,10 @@ class CalendarScreenState extends State<CalendarScreen> {
             icon: const Icon(Icons.today, color: Colors.black),
             onPressed: () => _onDaySelected(DateTime.now(), DateTime.now()),
           ),
-          const IconButton(
-            icon: Icon(Icons.notifications_outlined, color: Colors.black),
-            onPressed: null,
-          ),
+          // const IconButton(
+          //   icon: Icon(Icons.notifications_outlined, color: Colors.black),
+          //   onPressed: null,
+          // ),
         ],
       ),
       body: _isLoading
@@ -1081,15 +1149,215 @@ class CalendarScreenState extends State<CalendarScreen> {
 } // CalendarScreen 끝
 
 
-class ScheduleDetailDialog extends StatelessWidget {
+// --- ▼▼▼ [수정] StatelessWidget에서 StatefulWidget으로 변경 ▼▼▼ ---
+class ScheduleDetailDialog extends StatefulWidget {
   final Map<String, dynamic> schedule;
   final VoidCallback onDeleteConfirmed;
+  final DateTime date; // API 호출에 필요한 날짜
+  final double? temperature; // API 호출에 필요한 온도
+
+  // --- ▼▼▼ [추가] 날씨 정보 파라미터 선언 ▼▼▼ ---
+  final String currentTemp;
+  final String skyCondition;
+  final IconData skyIcon;
+  final String? minTemp;
+  final String? maxTemp;
+  // --- ▲▲▲ [추가] 날씨 정보 파라미터 선언 ▲▲▲ ---
 
   const ScheduleDetailDialog({
     super.key,
     required this.schedule,
     required this.onDeleteConfirmed,
+    required this.date,
+    this.temperature,
+    // --- ▼▼▼ [추가] 생성자에 날씨 파라미터 추가 ▼▼▼ ---
+    required this.currentTemp,
+    required this.skyCondition,
+    required this.skyIcon,
+    this.minTemp,
+    this.maxTemp,
+    // --- ▲▲▲ [추가] 생성자에 날씨 파라미터 추가 ▲▲▲ ---
   });
+
+  @override
+  State<ScheduleDetailDialog> createState() => _ScheduleDetailDialogState();
+}
+
+class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
+  // --- ▼▼▼ [추가] 코디 추천을 위한 상태 변수 ▼▼▼ ---
+  Map<String, dynamic>? _recommendedOutfit;
+  bool _isLoading = true;
+  String _recommendStatus = "코디 로딩 중...";
+  // --- ▲▲▲ [추가] 코디 추천을 위한 상태 변수 ▲▲▲ ---
+
+  Widget _buildWeatherCard() {
+    // 캘린더 화면의 _buildDateWeatherCard 로직을 재사용합니다.
+    // 팝업이 열린 날짜(widget.date)가 '오늘'인지 확인합니다.
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selectedDate =
+    DateTime(widget.date.year, widget.date.month, widget.date.day);
+    final bool isToday = selectedDate.isAtSameMomentAs(today);
+
+    // 캘린더 화면의 날씨가 로딩된 상태에서 팝업이 열리므로,
+    // 부모(widget)로부터 전달받은 데이터를 바로 사용합니다.
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('날씨',
+              style: TextStyle(
+                  color: Colors.grey[600], fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(widget.skyIcon, size: 24, color: Colors.grey[800]),
+              const SizedBox(width: 8),
+              Expanded( // 텍스트가 길어질 경우 대비
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로
+                    Text(
+                      isToday ? widget.currentTemp : widget.skyCondition,
+                      style:
+                      const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    // '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지)
+                    if (isToday)
+                      Text(
+                        widget.skyCondition,
+                        style: TextStyle(color: Colors.grey[800], fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (widget.minTemp != null && widget.maxTemp != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.start, // 왼쪽 정렬
+                children: [
+                  Text(widget.minTemp!,
+                      style: const TextStyle(fontSize: 10, color: Colors.blue)),
+                  Text(' / ',
+                      style: TextStyle(fontSize: 10, color: Colors.grey[700])),
+                  Text(widget.maxTemp!,
+                      style: const TextStyle(fontSize: 10, color: Colors.red)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  // --- ▲▲▲ [추가] 팝업용 날씨 카드 빌드 함수 ▲▲▲ ---
+
+  @override
+  void initState() {
+    super.initState();
+    // 팝업이 열릴 때 코디 추천 API 호출
+    _fetchScheduleRecommendation();
+  }
+
+  // --- ▼▼▼ [추가] 특정 일정의 TPO를 반환하는 헬퍼 ▼▼▼ ---
+  String _getTpoForSchedule(Map<String, dynamic> schedule) {
+    // main.dart와 동일한 TPO 매핑
+    const tpoMapping = {
+      '일상 & 캐주얼': 'Casual & Daily',
+      '비즈니스 & 포멀': 'Business & Formal',
+      '특별한 날 & 데이트': 'Special Occasion & Date',
+      '활동적인 날': 'Active Day',
+    };
+
+    final String? tpo1 = schedule['tpo1'];
+    final String? tpo2 = schedule['tpo2'];
+    final String rawTpo = (tpo1 != null && tpo1.isNotEmpty)
+        ? tpo1
+        : (tpo2 != null && tpo2.isNotEmpty)
+        ? tpo2
+        : '일상 & 캐주얼'; // 일정에 TPO가 없으면 기본값
+
+    return tpoMapping[rawTpo] ?? 'Casual & Daily';
+  }
+  // --- ▲▲▲ [추가] 특정 일정의 TPO를 반환하는 헬퍼 ▲▲▲ ---
+
+  // --- ▼▼▼ [추가] 팝업용 코디 추천 API 호출 함수 ▼▼▼ ---
+  Future<void> _fetchScheduleRecommendation() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userEmail = prefs.getString('userEmail');
+    if (userEmail == null) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _recommendStatus = "로그인 필요";
+        });
+      }
+      return;
+    }
+
+    // 1. TPO 가져오기 (이 일정에서)
+    final tpoCategory = _getTpoForSchedule(widget.schedule);
+
+    // 2. 날짜와 온도 가져오기 (Widget에서)
+    final dateString = DateFormat('yyyy-MM-dd').format(widget.date);
+    final temperature = widget.temperature; // (From main screen state)
+
+    try {
+      const String serverIp = '3.36.66.130';
+      final uri = Uri.parse('http://$serverIp:5000/recommend_today');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': userEmail,
+          'tpo': tpoCategory,
+          'date': dateString,
+          'temperature': temperature,
+        }),
+      );
+
+      if (mounted) {
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          final outfitsList = List<Map<String, dynamic>>.from(
+            data['recommended_outfits_list'] ?? [],
+          );
+
+          if (outfitsList.isNotEmpty) {
+            // "첫 번째" 코디만 저장
+            setState(() {
+              _recommendedOutfit = outfitsList.first;
+              _recommendStatus = "'$tpoCategory' 추천 코디";
+            });
+          } else {
+            setState(() {
+              _recommendStatus = "'$tpoCategory'에 맞는 코디가 없습니다.";
+            });
+          }
+        } else {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          setState(() => _recommendStatus = data['message'] ?? '추천 실패');
+        }
+      }
+    } catch (e) {
+      debugPrint("Dialog Recommendation error: $e");
+      if (mounted) setState(() => _recommendStatus = '네트워크 오류');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+  // --- ▲▲▲ [추가] 팝업용 코디 추천 API 호출 함수 ▲▲▲ ---
 
   String _getAlarmText(String? unit, int? value) {
     if (unit == null || value == null || unit == 'none') {
@@ -1113,7 +1381,10 @@ class ScheduleDetailDialog extends StatelessWidget {
     final String? startTimeStr = schedule['startTime'] as String?;
     final String? endTimeStr = schedule['endTime'] as String?;
 
-    if (startDateStr == null || endDateStr == null || startTimeStr == null || endTimeStr == null) {
+    if (startDateStr == null ||
+        endDateStr == null ||
+        startTimeStr == null ||
+        endTimeStr == null) {
       return "날짜/시간 정보 없음";
     }
 
@@ -1130,17 +1401,17 @@ class ScheduleDetailDialog extends StatelessWidget {
       if (isSingleDay) {
         if (isAllDay) {
           return '${dateFormat.format(startDate)} 하루 종일';
-        }
-        else {
+        } else {
           return '${dateFormat.format(startDate)} $startTimeStr - $endTimeStr';
         }
       } else {
         if (isAllDay) {
           return '${dateFormat.format(startDate)} - ${dateFormat.format(endDate)}';
-        }
-        else {
-          final fullStartDate = DateTime.parse('${startDateStr.substring(0, 10)}T$startTimeStr');
-          final fullEndDate = DateTime.parse('${endDateStr.substring(0, 10)}T$endTimeStr');
+        } else {
+          final fullStartDate =
+          DateTime.parse('${startDateStr.substring(0, 10)}T$startTimeStr');
+          final fullEndDate =
+          DateTime.parse('${endDateStr.substring(0, 10)}T$endTimeStr');
           return '${dateTimeFormat.format(fullStartDate)} - ${dateTimeFormat.format(fullEndDate)}';
         }
       }
@@ -1174,7 +1445,7 @@ class ScheduleDetailDialog extends StatelessWidget {
               child: const Text('확인', style: TextStyle(color: Colors.red)),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                onDeleteConfirmed();
+                widget.onDeleteConfirmed(); // widget.으로 접근
               },
             ),
           ],
@@ -1185,15 +1456,35 @@ class ScheduleDetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String title = (schedule['title'] as String?) ?? '제목 없음';
-    final String dateRange = _formatScheduleDateTime(schedule);
-    final String? locationName = (schedule['location'] as String?)?.isNotEmpty == true ? schedule['location'] as String : null;
-    final String? locationAddress = (schedule['locationAddress'] as String?)?.isNotEmpty == true ? schedule['locationAddress'] as String : null;
-    final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true ? schedule['tpo1'] as String : null;
-    final String? tpo2 = (schedule['tpo2'] as String?)?.isNotEmpty == true ? schedule['tpo2'] as String : null;
-    final String explanation = (schedule['explanation'] as String?) ?? '설명 없음';
-    final List<String> participants = (schedule['participants'] as String?)?.split(',').where((s) => s.isNotEmpty).toList() ?? [];
-    final String alarmText = _getAlarmText(schedule['alarmUnit'] as String?, schedule['alarmValue'] as int?);
+    // --- ▼▼▼ [수정] 'widget.schedule'로 접근 ▼▼▼ ---
+    final String title = (widget.schedule['title'] as String?) ?? '제목 없음';
+    final String dateRange = _formatScheduleDateTime(widget.schedule);
+    final String? locationName =
+    (widget.schedule['location'] as String?)?.isNotEmpty == true
+        ? widget.schedule['location'] as String
+        : null;
+    final String? locationAddress =
+    (widget.schedule['locationAddress'] as String?)?.isNotEmpty == true
+        ? widget.schedule['locationAddress'] as String
+        : null;
+    final String? tpo1 = (widget.schedule['tpo1'] as String?)?.isNotEmpty == true
+        ? widget.schedule['tpo1'] as String
+        : null;
+    final String? tpo2 = (widget.schedule['tpo2'] as String?)?.isNotEmpty == true
+        ? widget.schedule['tpo2'] as String
+        : null;
+    final String explanation =
+        (widget.schedule['explanation'] as String?) ?? '설명 없음';
+    final List<String> participants =
+        (widget.schedule['participants'] as String?)
+            ?.split(',')
+            .where((s) => s.isNotEmpty)
+            .toList() ??
+            [];
+    final String alarmText = _getAlarmText(
+        widget.schedule['alarmUnit'] as String?,
+        widget.schedule['alarmValue'] as int?);
+    // --- ▲▲▲ [수정] 'widget.schedule'로 접근 ▲▲▲ ---
 
     return Dialog(
       alignment: Alignment.bottomCenter,
@@ -1215,12 +1506,15 @@ class ScheduleDetailDialog extends StatelessWidget {
                 children: [
                   IconButton(
                       onPressed: () => _showDeleteConfirmationDialog(context),
-                      icon: const Icon(Icons.delete_outline)
-                  ),
+                      icon: const Icon(Icons.delete_outline)),
                   Column(
                     children: [
-                      const Text('내 일정', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text('기본일정', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                      const Text('내 일정',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('기본일정',
+                          style:
+                          TextStyle(color: Colors.grey[600], fontSize: 12)),
                     ],
                   ),
                   IconButton(
@@ -1252,13 +1546,22 @@ class ScheduleDetailDialog extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text(title,
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Text(dateRange, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          Text(dateRange,
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 12)),
                         ],
                       ),
                     ),
-                    IconButton(onPressed: (){ /* TODO: Edit schedule */}, icon: const Icon(Icons.edit_outlined), constraints: const BoxConstraints()),
+                    // IconButton(
+                    //     onPressed: () {
+                    //       /* TODO: Edit schedule */
+                    //     },
+                    //     icon: const Icon(Icons.edit_outlined),
+                    //     constraints: const BoxConstraints()),
                   ],
                 ),
               ),
@@ -1269,14 +1572,16 @@ class ScheduleDetailDialog extends StatelessWidget {
                   Expanded(
                     child: SizedBox(
                       height: 110,
-                      child: _buildInfoCard('알림설정', [alarmText], Icons.notifications_outlined),
+                      child: _buildInfoCard(
+                          '알림설정', [alarmText], Icons.notifications_outlined),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: SizedBox(
                       height: 110,
-                      child: _buildInfoCard('참가자', participants, Icons.people_outline),
+                      child: _buildInfoCard(
+                          '참가자', participants, Icons.people_outline),
                     ),
                   ),
                 ],
@@ -1304,26 +1609,66 @@ class ScheduleDetailDialog extends StatelessWidget {
                   Expanded(
                       child: Container(
                         height: 232,
-                        padding: const EdgeInsets.all(12),
+                        // --- ▼▼▼ [수정] Padding 제거, clipBehavior 추가 ---
+                        // padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                             color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(12)
+                            borderRadius: BorderRadius.circular(12)),
+                        clipBehavior: Clip.antiAlias,
+                        // --- ▲▲▲ [수정] Padding 제거, clipBehavior 추가 ---
+                        // --- ▼▼▼ [수정] "Look 정보 없음"을 로딩 로직으로 변경 ---
+                        child: _isLoading
+                            ? Center(
+                          // 로딩 중
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const CircularProgressIndicator(strokeWidth: 2),
+                              const SizedBox(height: 8),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                child: Text(
+                                  _recommendStatus,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.grey),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                            : _recommendedOutfit != null
+                            ? RecommendedOutfitCard(
+                            outfitData: _recommendedOutfit!) // 성공
+                            : Center(
+                          // 데이터 없음 또는 오류
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              _recommendStatus,
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         ),
-                        child: const Center(child: Text("Look 정보 없음")), // TODO: Add Look info
-                      )
-                  ),
+                        // --- ▲▲▲ [수정] "Look 정보 없음"을 로딩 로직으로 변경 ---
+                      )),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       children: [
                         SizedBox(
                           height: 110,
-                          child: _buildInfoCard('날씨', ["정보 없음"], Icons.thermostat), // TODO: Add Weather info
+                          // --- ▼▼▼ [수정] _buildInfoCard를 _buildWeatherCard로 교체 ▼▼▼ ---
+                          child: _buildWeatherCard(),
+                          // --- ▲▲▲ [수정] _buildInfoCard를 _buildWeatherCard로 교체 ▲▲▲ ---
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
                           height: 110,
-                          child: _buildInfoCard('설명', [explanation], Icons.notes),
+                          child:
+                          _buildInfoCard('설명', [explanation], Icons.notes),
                         ),
                       ],
                     ),
@@ -1338,7 +1683,8 @@ class ScheduleDetailDialog extends StatelessWidget {
   }
 
   Widget _buildInfoCard(String title, List<String> items, IconData icon) {
-    final validItems = items.where((item) => item.isNotEmpty && item != '설명 없음').toList();
+    final validItems =
+    items.where((item) => item.isNotEmpty && item != '설명 없음').toList();
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1349,33 +1695,42 @@ class ScheduleDetailDialog extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold)),
+          Text(title,
+              style: TextStyle(
+                  color: Colors.grey[600], fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           if (validItems.isEmpty)
             Row(
               children: [
                 Icon(icon, size: 16, color: Colors.grey[700]),
                 const SizedBox(width: 8),
-                const Expanded(child: Text("정보 없음", overflow: TextOverflow.ellipsis)),
+                const Expanded(
+                    child: Text("정보 없음", overflow: TextOverflow.ellipsis)),
               ],
             )
           else
-            ...validItems.map((item) => Padding(
+            ...validItems
+                .map((item) => Padding(
               padding: const EdgeInsets.only(bottom: 4.0),
               child: Row(
                 children: [
                   Icon(icon, size: 16, color: Colors.grey[700]),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(item, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                  Expanded(
+                      child: Text(item,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12))),
                 ],
               ),
-            )).toList(),
+            ))
+                .toList(),
         ],
       ),
     );
   }
 
-  Widget _buildSectionCard({required IconData icon, required String title, String? subtitle}) {
+  Widget _buildSectionCard(
+      {required IconData icon, required String title, String? subtitle}) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -1390,9 +1745,12 @@ class ScheduleDetailDialog extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold)),
               if (subtitle != null && subtitle.isNotEmpty)
-                Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700])),
             ],
           ),
         ],
@@ -1400,6 +1758,7 @@ class ScheduleDetailDialog extends StatelessWidget {
     );
   }
 }
+// --- ▲▲▲ [수정] StatelessWidget에서 StatefulWidget으로 변경 ▲▲▲ ---
 
 // --- ▼▼▼ [추가됨] main.dart에서 복사해 온 'RecommendedOutfitCard' 위젯 ▼▼▼ ---
 class RecommendedOutfitCard extends StatelessWidget {

@@ -115,10 +115,10 @@ class ProfileScreenState extends State<ProfileScreen>
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-            onPressed: () {},
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.notifications_none, color: Colors.black),
+          //   onPressed: () {},
+          // ),
           IconButton(
             icon: const Icon(Icons.menu, color: Colors.black),
             onPressed: () {
@@ -134,7 +134,7 @@ class ProfileScreenState extends State<ProfileScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildProfileHeader(),
-          _buildProfileTabs(),
+          // _buildProfileTabs(),
           if (_isClosetTabSelected) _buildFilterBar(),
           Expanded(
             child: _isClosetTabSelected
@@ -175,22 +175,22 @@ class ProfileScreenState extends State<ProfileScreen>
                   style: const TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 1),
-                ElevatedButton.icon(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[200],
-                    elevation: 0,
-                    minimumSize: const Size(double.infinity, 32),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  icon: const Icon(Icons.edit, size: 15, color: Colors.black),
-                  label: const Text(
-                    '프로필 편집',
-                    style: TextStyle(color: Colors.black, fontSize: 12),
-                  ),
-                ),
+                // ElevatedButton.icon(
+                //   onPressed: () {},
+                //   style: ElevatedButton.styleFrom(
+                //     backgroundColor: Colors.grey[200],
+                //     elevation: 0,
+                //     minimumSize: const Size(double.infinity, 32),
+                //     shape: RoundedRectangleBorder(
+                //       borderRadius: BorderRadius.circular(8),
+                //     ),
+                //   ),
+                //   icon: const Icon(Icons.edit, size: 15, color: Colors.black),
+                //   label: const Text(
+                //     '프로필 편집',
+                //     style: TextStyle(color: Colors.black, fontSize: 12),
+                //   ),
+                // ),
               ],
             ),
           ),

@@ -6,7 +6,7 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   // 로그아웃 로직을 처리하는 함수
-  Future<void> _logout(BuildContext context) async {
+  Future<void> logout(BuildContext context) async {
     // 저장된 로그인 상태를 삭제
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
@@ -70,7 +70,7 @@ class SettingsScreen extends StatelessWidget {
             child: Column(
               children: [
                 TextButton(
-                  onPressed: () => _logout(context), // 로그아웃 함수 호출
+                  onPressed: () => logout(context), // 로그아웃 함수 호출
                   child: const Text(
                     '로그아웃',
                     style: TextStyle(color: Colors.grey),

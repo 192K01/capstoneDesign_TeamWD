@@ -106,13 +106,11 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
     }
   }
 
-  // 옷 삭제 함수
+  /// 옷 삭제 함수
   Future<void> _deleteCloth(BuildContext context) async {
     // StatefulWidget이므로 'widget.cloth'로 접근
     final clothId = widget.cloth['cloth_id'];
 
-  // (옷 삭제 _deleteCloth 함수는 이전과 동일)
-  Future<void> _deleteCloth(BuildContext context) async {
     if (clothId == null) {
       ScaffoldMessenger.of(
         context,
@@ -287,8 +285,9 @@ class _ClothDetailScreenState extends State<ClothDetailScreen> {
     // [수정됨] 이미지 URL 생성 로직 (profile_screen.dart와 동일하게)
     final String imageUrl = imagePath.isNotEmpty
         ? (imagePath.startsWith('http')
-              ? imagePath
-              : '$serverBaseUrl/$imagePath')
+        ? imagePath
+        : '$serverBaseUrl/$imagePath')
+        : '';
       
     return Scaffold(
       backgroundColor: Colors.white,

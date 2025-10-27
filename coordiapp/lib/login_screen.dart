@@ -215,53 +215,53 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // 6. 소셜 로그인 버튼들
               // 구글로 로그인하기
-              ElevatedButton.icon(
-                onPressed: _isLoading ? null : _handleLogin, // 임시로 일반 로그인 함수 연결
-                icon: const Icon(
-                  Icons.g_mobiledata,
-                  color: Colors.black,
-                ), // 구글 아이콘으로 교체 필요
-                label: const Text(
-                  '구글로 로그인하기',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14.0),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                    side: const BorderSide(color: Colors.black26),
-                  ),
-                  elevation: 0,
-                ),
-              ),
-              const SizedBox(height: 12.0),
-
-              // 네이버로 로그인하기
-              ElevatedButton.icon(
-                onPressed: _isLoading ? null : _handleLogin, // 임시로 일반 로그인 함수 연결
-                icon: const Icon(
-                  Icons.ac_unit,
-                  color: Colors.white,
-                ), // 네이버 아이콘으로 교체 필요
-                label: const Text(
-                  '네이버로 로그인하기',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF03C75A), // 네이버 초록색
-                  padding: const EdgeInsets.symmetric(vertical: 14.0),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                ),
-              ),
+              // ElevatedButton.icon(
+              //   onPressed: _isLoading ? null : _handleLogin, // 임시로 일반 로그인 함수 연결
+              //   icon: const Icon(
+              //     Icons.g_mobiledata,
+              //     color: Colors.black,
+              //   ), // 구글 아이콘으로 교체 필요
+              //   label: const Text(
+              //     '구글로 로그인하기',
+              //     style: TextStyle(
+              //       color: Colors.black,
+              //       fontWeight: FontWeight.bold,
+              //     ),
+              //   ),
+              //   style: ElevatedButton.styleFrom(
+              //     backgroundColor: Colors.white,
+              //     padding: const EdgeInsets.symmetric(vertical: 14.0),
+              //     shape: RoundedRectangleBorder(
+              //       borderRadius: BorderRadius.circular(12.0),
+              //       side: const BorderSide(color: Colors.black26),
+              //     ),
+              //     elevation: 0,
+              //   ),
+              // ),
+              // const SizedBox(height: 12.0),
+              //
+              // // 네이버로 로그인하기
+              // ElevatedButton.icon(
+              //   onPressed: _isLoading ? null : _handleLogin, // 임시로 일반 로그인 함수 연결
+              //   icon: const Icon(
+              //     Icons.ac_unit,
+              //     color: Colors.white,
+              //   ), // 네이버 아이콘으로 교체 필요
+              //   label: const Text(
+              //     '네이버로 로그인하기',
+              //     style: TextStyle(
+              //       color: Colors.white,
+              //       fontWeight: FontWeight.bold,
+              //     ),
+              //   ),
+              //   style: ElevatedButton.styleFrom(
+              //     backgroundColor: const Color(0xFF03C75A), // 네이버 초록색
+              //     padding: const EdgeInsets.symmetric(vertical: 14.0),
+              //     shape: RoundedRectangleBorder(
+              //       borderRadius: BorderRadius.circular(12.0),
+              //     ),
+              //   ),
+              // ),
             ],
           ),
         ),

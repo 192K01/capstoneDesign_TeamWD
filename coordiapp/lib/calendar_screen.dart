@@ -1,15 +1,16 @@
 // 📂 lib/calendar_screen.dart
+// [수정됨] 날씨 API 호출을 캐시하도록 로직 변경
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; // http 패키지 import 확인
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
-import 'schedule_add.dart'; // 일정 추가 화면 import
-import 'package:flutter/cupertino.dart'; // CupertinoDatePicker 등을 위해 추가
+import 'schedule_add.dart';
+import 'package:flutter/cupertino.dart';
 
 
 class CalendarScreen extends StatefulWidget {
@@ -36,10 +37,15 @@ class CalendarScreenState extends State<CalendarScreen> {
 
   Position? _currentPosition;
 
-  Map<String, dynamic>? _recommendedOutfit; // 추천된 첫 번째 코디
-  bool _isRecommendLoading = true; // 코디 로딩 상태
-  String _recommendStatus = "Looks 로딩 중..."; // 코디 로딩 메시지
-  double? _rawTempForApi; // API 전송용 대표 온도
+  Map<String, dynamic>? _recommendedOutfit;
+  bool _isRecommendLoading = true;
+  String _recommendStatus = "Looks 로딩 중...";
+  double? _rawTempForApi;
+
+  // --- ▼▼▼ [신규] 날씨 캐시를 위한 상태 변수 추가 ▼▼▼ ---
+  DateTime? _lastWeatherFetchTime; // 마지막으로 날씨를 가져온 시간
+  DateTime? _lastWeatherFetchDay; // 마지막으로 날씨를 가져온 *날짜*
+  // --- ▲▲▲ [신규] 날씨 캐시를 위한 상태 변수 추가 ▲▲▲ ---
 
   @override
   void initState() {
@@ -49,6 +55,10 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> refreshData() async {
+    // [수정] 새로고침 시 캐시 초기화
+    _lastWeatherFetchTime = null;
+    _lastWeatherFetchDay = null;
+
     if (mounted) {
       setState(() {
         _isLoading = true;
@@ -63,44 +73,31 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // --- ▼▼▼ [수정] 초기 데이터 로딩 최적화 (일정 먼저 로드) ▼▼▼ ---
   Future<void> _loadInitialData() async {
-    // Phase 1: 필수 데이터(일정)만 로드
-    // _isLoading = true는 State의 기본값입니다.
-
-    // 1. 일정 로드
     await _loadSchedulesFromServer();
 
-    // 2. 오늘 날짜 기준으로 초기 필터링 및 날짜 문자열 설정
     _filterSchedules(_selectedDay!);
     _setDateString(_selectedDay!);
 
-    // 3. (Phase 1 완료) 메인 로딩 스피너를 끄고 UI를 그림
     if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
 
-    // 4. (Phase 2 시작) UI가 그려진 후, 나머지(위치, 날씨, 코디)를
-    //    백그라운드에서 로드 (await 안함)
     _loadSecondaryData();
   }
-  // --- ▲▲▲ [수정] 초기 데이터 로딩 최적화 (일정 먼저 로드) ▲▲▲ ---
 
 
-  // --- ▼▼▼ [추가] 2단계(위치, 날씨, 코디) 로딩 함수 ▼▼▼ ---
   Future<void> _loadSecondaryData() async {
-    // 1. 날씨와 코디 카드의 개별 로딩 스피너를 활성화
     if (mounted) {
       setState(() {
         _isWeatherLoading = true;
-        _isRecommendLoading = true; // State 기본값이 true이긴 하나 명시적으로 설정
+        _isRecommendLoading = true;
         _skyCondition = "로딩 중...";
       });
     }
 
-    // 2. 위치 정보 가져오기 시도
     Position? fetchedPosition;
     String? locationError;
 
@@ -110,35 +107,36 @@ class CalendarScreenState extends State<CalendarScreen> {
       locationError = e.toString();
     }
 
-    // 3. 위치 정보 상태 업데이트
     if (mounted) {
       setState(() {
         if (fetchedPosition != null) {
           _currentPosition = fetchedPosition;
         }
         if (locationError != null) {
-          _skyCondition = locationError; // 날씨 카드에 에러 메시지 표시
+          _skyCondition = locationError;
         }
       });
     }
 
-    // 4. 날씨 정보 로드 (위치 정보가 있어야 가능)
     if (_currentPosition != null) {
+      // (기존) 날씨 로드
       await _fetchWeather(_currentPosition!, _selectedDay!);
-    }
-    // 날씨 로드가 끝나면 개별 스피너 끔
-    if (mounted) {
-      setState(() {
-        _isWeatherLoading = false;
-      });
+
+      // (신규) 날씨 로드 성공 시 캐시 시간 저장
+      if (mounted) {
+        _lastWeatherFetchTime = DateTime.now();
+        _lastWeatherFetchDay = _selectedDay;
+        setState(() {
+          _isWeatherLoading = false;
+        });
+      }
     }
 
-    // 5. 코디 추천 로드 (날씨 정보(_rawTempForApi)가 필요)
     await _getRecommendation();
-    // _isRecommendLoading = false는 _getRecommendation 함수 내부의
-    // finally 블록에서 자동으로 처리됩니다.
   }
-  // --- ▲▲▲ [추가] 2단계(위치, 날씨, 코디) 로딩 함수 ▲▲▲ ---
+
+  // ( ... _loadSchedulesFromServer, _filterSchedules, _setDateString ... )
+  // (기존 코드와 동일)
 
   Future<void> _loadSchedulesFromServer() async {
     final prefs = await SharedPreferences.getInstance();
@@ -239,55 +237,105 @@ class CalendarScreenState extends State<CalendarScreen> {
     _dateString = DateFormat('M. d. E', 'ko_KR').format(date);
   }
 
+  // --- ▼▼▼ [핵심 수정] _onDaySelected에 캐시 로직 적용 ▼▼▼ ---
   Future<void> _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
-    // --- ▼▼▼ [수정] 상태 초기화 로직 전면 수정 ▼▼▼ ---
 
-    // 1. 모든 관련 상태 변수를 setState 이전에 직접 업데이트합니다.
+    // 1. (공통) 날짜 및 일정 필터링은 항상 실행
     _selectedDay = selectedDay;
     _focusedDay = focusedDay;
-
-    // 2. 날씨 관련 상태를 모두 리셋합니다.
-    _isWeatherLoading = true;
-    _currentTemp = "";
-    _skyCondition = "로딩 중...";
-    _minTemp = null;
-    _maxTemp = null;
-    _rawTempForApi = null; // (중요) 이전 날짜의 온도 값을 제거합니다.
-
-    // 3. 코디 추천 관련 상태를 모두 리셋합니다.
-    _isRecommendLoading = true;
-    _recommendedOutfit = null; // (중요) 이전 날짜의 코디를 제거합니다.
-    _recommendStatus = "Looks 로딩 중...";
-
-    // 4. 일정을 새 날짜 기준으로 동기적으로 필터링합니다.
     _filterSchedules(selectedDay);
-
-    // 5. 날짜 문자열을 업데이트합니다.
     _setDateString(selectedDay);
 
-    // 6. 위에서 변경된 모든 상태를 UI에 한 번에 반영합니다.
-    setState(() {
-      // 이 블록은 UI 갱신을 트리거하는 역할만 합니다.
-    });
+    // 2. 캐시 유효성 검사
+    bool isCacheValid = false;
+    final bool isToday = isSameDay(selectedDay, DateTime.now());
 
-    // 7. UI가 '로딩 중'으로 변경된 후, 비동기 데이터 로드를 시작합니다.
-    if (_currentPosition != null) {
-      // 날씨를 먼저 가져와서 _rawTempForApi를 설정합니다.
-      await _fetchWeather(_currentPosition!, selectedDay);
+    if (_lastWeatherFetchTime != null &&
+        _lastWeatherFetchDay != null &&
+        isSameDay(_lastWeatherFetchDay!, selectedDay)) {
+
+      // A. 캐시가 '오늘' 날짜에 대한 것이라면, 1시간 유효
+      if (isToday) {
+        if (DateTime.now().difference(_lastWeatherFetchTime!) <
+            const Duration(hours: 1)) {
+          isCacheValid = true;
+        }
+      }
+      // B. 캐시가 '과거/미래' 날짜에 대한 것이라면, 항상 유효
+      else {
+        isCacheValid = true;
+      }
     }
 
-    // 8. 날씨 정보가 업데이트된 후, 코디 추천을 받습니다.
-    await _getRecommendation();
+    // 3. 캐시 상태에 따라 분기
+    if (isCacheValid) {
+      // [캐시 사용] 날씨는 그대로 두고, 코디 추천만 새로고침
+      debugPrint("날씨 캐시 사용: $selectedDay");
 
-    // 9. 날씨 로딩 상태를 해제합니다.
-    // (코디 로딩은 _getRecommendation 내부의 'finally' 블록에서 처리됨)
-    if (mounted) {
       setState(() {
-        _isWeatherLoading = false;
+        // 날씨 관련 state는 재설정하지 않음 (로딩 스피너 X)
+        // 코디 관련 state만 재설정
+        _isRecommendLoading = true;
+        _recommendedOutfit = null;
+        _recommendStatus = "Looks 로딩 중...";
       });
+
+      // 날씨(_rawTempForApi)는 캐시된 값을 사용
+      await _getRecommendation();
+
+    } else {
+      // [캐시 무효화] 날씨와 코디 모두 새로고침 (기존 로직)
+      debugPrint("날씨 캐시 무효화. API 호출: $selectedDay");
+
+      // 1. 모든 관련 상태 변수를 리셋
+      _isWeatherLoading = true; // 날씨 로딩 스피너 활성화
+      _currentTemp = "";
+      _skyCondition = "로딩 중...";
+      _minTemp = null;
+      _maxTemp = null;
+      _rawTempForApi = null;
+
+      _isRecommendLoading = true;
+      _recommendedOutfit = null;
+      _recommendStatus = "Looks 로딩 중...";
+
+      // 2. 위에서 변경된 모든 상태를 UI에 한 번에 반영
+      setState(() {
+        // 이 블록은 UI 갱신을 트리거
+      });
+
+      // 3. 비동기 데이터 로드
+      if (_currentPosition != null) {
+        await _fetchWeather(_currentPosition!, selectedDay);
+      }
+
+      await _getRecommendation(); // 날씨 로드 후 코디 추천
+
+      // 4. (신규) 새 데이터를 캐시에 저장
+      _lastWeatherFetchTime = DateTime.now();
+      _lastWeatherFetchDay = selectedDay;
+
+      // 5. 날씨 로딩 상태 해제
+      if (mounted) {
+        setState(() {
+          _isWeatherLoading = false;
+        });
+      }
     }
-    // --- ▲▲▲ [수정] 상태 초기화 로직 전면 수정 ▲▲▲ ---
   }
+  // --- ▲▲▲ [핵심 수정] _onDaySelected에 캐시 로직 적용 ▲▲▲ ---
+
+  // ( ... _fetchWeather, _getCurrentLocation, _fetchTodayWeather ... )
+  // ( ... _fetchCombinedForecast, _getPtyString, _getSkyString ... )
+  // ( ... _getWeatherIcon, _convertToGrid, _deleteSchedule ... )
+  // ( ... _showScheduleDetails, _navigateAndRefresh, build ... )
+  // ( ... _buildCalendar, _buildScheduleHeader, _buildCombinedScheduleCard ... )
+  // ( ... _buildDateWeatherCard, _buildLooksCard, _buildScheduleList ... )
+  // ( ... _buildScheduleItem, _getTpoForSelectedDay, _getRecommendation ... )
+  // ( ... ScheduleDetailDialog, RecommendedOutfitCard ... )
+  // (*** 나머지 함수들은 이전과 동일합니다 ***)
+
+  // (복사 편의를 위해 수정되지 않은 함수들도 아래에 포함합니다)
 
   Future<void> _fetchWeather(Position position, DateTime date) async {
     final now = DateTime.now();
@@ -295,28 +343,18 @@ class CalendarScreenState extends State<CalendarScreen> {
     final selected = DateTime(date.year, date.month, date.day);
 
     final bool isToday = selected.isAtSameMomentAs(today);
-    // 오늘 날짜와의 차이(일)를 계산
     final int dayDifference = selected.difference(today).inDays;
 
     if (isToday) {
-      // D+0 (오늘): 초단기예보(현재) + 단기예보(최저/최고)
       await Future.wait([
         _fetchTodayWeather(position.latitude, position.longitude),
-        _fetchMinMaxTemp(position.latitude, position.longitude, date)
+        _fetchCombinedForecast(position.latitude, position.longitude, date)
       ]);
     }
-    // --- ▼▼▼ [수정] 과거 날짜(dayDifference < 0)도 API를 호출하도록 추가 ▼▼▼ ---
     else if ((dayDifference > 0 && dayDifference <= 2) || (dayDifference < 0)) {
-      // D+1, D+2 (미래) 또는 D-1... (과거): 단기예보(12시) + 단기예보(최저/최고)
-      await Future.wait([
-        _fetchFutureForecast(position.latitude, position.longitude, date),
-        _fetchMinMaxTemp(position.latitude, position.longitude, date)
-      ]);
+      await _fetchCombinedForecast(position.latitude, position.longitude, date);
     }
-    // --- ▲▲▲ [수정] 과거 날짜(dayDifference < 0)도 API를 호출하도록 추가 ▲▲▲ ---
     else {
-      // D+3 (글피) 이후
-      // 단기예보 API 범위 밖이므로 "예보 없음" 처리
       if (mounted) {
         _rawTempForApi = null;
         setState(() {
@@ -399,11 +437,10 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  Future<void> _fetchFutureForecast(double lat, double lng, DateTime date) async {
+  Future<void> _fetchCombinedForecast(double lat, double lng, DateTime date) async {
     try {
       const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
 
-      // --- ▼▼▼ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▼▼▼ ---
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final selected = DateTime(date.year, date.month, date.day);
@@ -412,51 +449,49 @@ class CalendarScreenState extends State<CalendarScreen> {
       String baseDate;
       const baseTime = '0200';
 
-      if (selected.isAfter(today)) {
-        // [미래 날짜 D+1, D+2]
-        // API 기준일(baseDate)은 '오늘'이어야 함
+      if (selected.isAfter(today) || selected.isAtSameMomentAs(today)) {
         DateTime baseDateTime = now.hour < 2
             ? now.subtract(const Duration(days: 1))
             : now;
         baseDate = DateFormat('yyyyMMdd').format(baseDateTime);
       } else {
-        // [과거 날짜 D-1...]
-        // API 기준일(baseDate)은 '선택한 날짜'와 동일
         baseDate = targetDate;
       }
-      // --- ▲▲▲ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▲▲▲ ---
 
       final gridCoords = _convertToGrid(lat, lng);
       final nx = gridCoords['x'];
       final ny = gridCoords['y'];
       final url = Uri.parse(
         'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-        // --- ▼▼▼ [수정] numOfRows=1000으로 변경 ▼▼▼ ---
-        '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
-        // --- ▲▲▲ [수정] numOfRows=1000으로 변경 ▲▲▲ ---
+            '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
       );
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['response']['header']['resultCode'] == '00') {
           final items = data['response']['body']['items']['item'] as List;
-          Map<String, String> weatherData = {};
+          Map<String, String> weatherData1200 = {}; // 12시 예보
+          String tmn = '', tmx = ''; // 최저/최고 기온
 
           for (var item in items) {
-            // targetDate(선택한 날짜)의 12시 예보를 찾음
-            if (item['fcstDate'] == targetDate && item['fcstTime'] == '1200') {
-              weatherData[item['category']] = item['fcstValue'];
+            if (item['fcstDate'] == targetDate) {
+              if (item['fcstTime'] == '1200') {
+                weatherData1200[item['category']] = item['fcstValue'];
+              }
+              if (item['category'] == 'TMN') tmn = item['fcstValue'];
+              if (item['category'] == 'TMX') tmx = item['fcstValue'];
             }
           }
 
-          String temp = weatherData['T3H'] ?? ''; // 3시간 기온
+          String temp = weatherData1200['T3H'] ?? '';
           if (temp.isEmpty) {
-            temp = weatherData['TMP'] ?? ''; // 1시간 기온(TMP)으로 대체
+            temp = weatherData1200['TMP'] ?? '';
           }
-          String sky = weatherData['SKY'] ?? '';
-          String pty = weatherData['PTY'] ?? '';
+          String sky = weatherData1200['SKY'] ?? '';
+          String pty = weatherData1200['PTY'] ?? '';
 
-          if (temp.isNotEmpty && mounted) {
+          final bool isToday = selected.isAtSameMomentAs(today);
+          if (!isToday && temp.isNotEmpty && mounted) {
             final ptyString = _getPtyString(pty);
             final skyString = _getSkyString(sky);
             _rawTempForApi = double.tryParse(temp);
@@ -465,69 +500,11 @@ class CalendarScreenState extends State<CalendarScreen> {
               _skyCondition = ptyString.isNotEmpty ? ptyString : skyString;
               _skyIcon = _getWeatherIcon(sky, pty);
             });
-          } else {
+          } else if (!isToday) {
             _rawTempForApi = null;
             if (mounted) setState(() => _skyCondition = "예보 없음");
           }
-        }
-      }
-    } catch (e) {
-      if (mounted) setState(() => _skyCondition = "예보 오류");
-      debugPrint("미래/과거 예보 API 오류: $e");
-    }
-  }
 
-  Future<void> _fetchMinMaxTemp(double lat, double lng, DateTime date) async {
-    try {
-      const apiKey = 'ymOBx1J3Se-jgcdSdynvFg';
-
-      // --- ▼▼▼ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▼▼▼ ---
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final selected = DateTime(date.year, date.month, date.day);
-
-      final targetDate = DateFormat(
-        'yyyyMMdd',
-      ).format(date); // 예보를 찾을 날짜 (fcstDate)
-      String baseDate;
-      const baseTime = '0200';
-
-      if (selected.isAfter(today)) {
-        // [미래 날짜 D+1, D+2]
-        // API 기준일(baseDate)은 '오늘'이어야 함
-        DateTime baseDateTime = now.hour < 2
-            ? now.subtract(const Duration(days: 1))
-            : now;
-        baseDate = DateFormat('yyyyMMdd').format(baseDateTime);
-      } else {
-        // [과거 날짜 D-1...]
-        // API 기준일(baseDate)은 '선택한 날짜'와 동일
-        baseDate = targetDate;
-      }
-      // --- ▲▲▲ [수정] 미래/과거 날짜에 따라 baseDate를 다르게 설정 ▲▲▲ ---
-
-      final gridCoords = _convertToGrid(lat, lng);
-      final nx = gridCoords['x'];
-      final ny = gridCoords['y'];
-      final url = Uri.parse(
-        'https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVilageFcst'
-        // --- ▼▼▼ [수정] numOfRows=1000으로 변경 ▼▼▼ ---
-        '?authKey=$apiKey&pageNo=1&numOfRows=1000&dataType=JSON&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny',
-        // --- ▲▲▲ [수정] numOfRows=1000으로 변경 ▲▲▲ ---
-      );
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['response']['header']['resultCode'] == '00') {
-          final items = data['response']['body']['items']['item'] as List;
-          String tmn = '', tmx = '';
-          for (var item in items) {
-            // targetDate(선택한 날짜)의 TMN/TMX를 찾음
-            if (item['fcstDate'] == targetDate) {
-              if (item['category'] == 'TMN') tmn = item['fcstValue'];
-              if (item['category'] == 'TMX') tmx = item['fcstValue'];
-            }
-          }
           if (tmn.isNotEmpty && tmx.isNotEmpty && mounted) {
             setState(() {
               _minTemp = "최저 ${double.parse(tmn).toStringAsFixed(1)}°";
@@ -537,7 +514,8 @@ class CalendarScreenState extends State<CalendarScreen> {
         }
       }
     } catch (e) {
-      debugPrint("최저/최고기온 API 오류: $e");
+      if (mounted) setState(() => _skyCondition = "예보 오류");
+      debugPrint("통합 예보 API 오류: $e");
     }
   }
 
@@ -606,7 +584,7 @@ class CalendarScreenState extends State<CalendarScreen> {
             const SnackBar(content: Text('일정이 삭제되었습니다.'), backgroundColor: Colors.green),
           );
           Navigator.of(context).pop();
-          refreshData();
+          refreshData(); // [수정] 새로고침 시 캐시가 초기화됨
         } else {
           final responseData = jsonDecode(response.body);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -629,11 +607,8 @@ class CalendarScreenState extends State<CalendarScreen> {
       barrierDismissible: true,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (BuildContext context) {
-        // --- ▼▼▼ [수정] 날씨 정보 파라미터 5개 추가 ▼▼▼ ---
         return ScheduleDetailDialog(
           schedule: schedule,
-          date: _selectedDay!,
-          temperature: _rawTempForApi,
           onDeleteConfirmed: () async {
             await _deleteSchedule(schedule['schedule_id']);
           },
@@ -643,8 +618,11 @@ class CalendarScreenState extends State<CalendarScreen> {
           skyIcon: _skyIcon,
           minTemp: _minTemp,
           maxTemp: _maxTemp,
+          // 코디 정보 전달
+          recommendedOutfit: _recommendedOutfit,
+          isRecommendLoading: _isRecommendLoading,
+          recommendStatus: _recommendStatus,
         );
-        // --- ▲▲▲ [수정] 날씨 정보 파라미터 5개 추가 ▲▲▲ ---
       },
     );
   }
@@ -657,7 +635,7 @@ class CalendarScreenState extends State<CalendarScreen> {
     );
 
     if (result == true) {
-      refreshData();
+      refreshData(); // [수정] 새로고침 시 캐시가 초기화됨
     }
   }
 
@@ -669,10 +647,6 @@ class CalendarScreenState extends State<CalendarScreen> {
         scrolledUnderElevation: 0,
         backgroundColor: Colors.white,
         elevation: 0,
-        // leading: const IconButton(
-        //   icon: Icon(Icons.menu, color: Colors.black),
-        //   onPressed: null,
-        // ),
         title: const Text('Calendar', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 22)),
         centerTitle: true,
         actions: [
@@ -680,10 +654,6 @@ class CalendarScreenState extends State<CalendarScreen> {
             icon: const Icon(Icons.today, color: Colors.black),
             onPressed: () => _onDaySelected(DateTime.now(), DateTime.now()),
           ),
-          // const IconButton(
-          //   icon: Icon(Icons.notifications_outlined, color: Colors.black),
-          //   onPressed: null,
-          // ),
         ],
       ),
       body: _isLoading
@@ -819,13 +789,11 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDateWeatherCard() {
-    // --- ▼▼▼ [수정] 오늘/과거/미래 UI 분기를 위한 날짜 비교 로직 추가 ▼▼▼ ---
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final selected = _selectedDay ?? now; // _selectedDay가 null일 경우 오늘로 간주
+    final selected = _selectedDay ?? now;
     final selectedDate = DateTime(selected.year, selected.month, selected.day);
     final bool isToday = selectedDate.isAtSameMomentAs(today);
-    // --- ▲▲▲ [수정] 오늘/과거/미래 UI 분기를 위한 날짜 비교 로직 추가 ▲▲▲ ---
 
     return Container(
       padding: const EdgeInsets.all(12.0),
@@ -833,6 +801,7 @@ class CalendarScreenState extends State<CalendarScreen> {
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
       ),
+      // [수정] _isWeatherLoading 상태를 사용
       child: _isWeatherLoading
           ? const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()))
           : Column(
@@ -850,20 +819,15 @@ class CalendarScreenState extends State<CalendarScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- ▼▼▼ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▼▼▼ ---
                   Text(
                     isToday ? _currentTemp : _skyCondition,
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
-                  // --- ▲▲▲ [수정] '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로 ▲▲▲ ---
-
-                  // --- ▼▼▼ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▼▼▼ ---
                   if (isToday)
                     Text(
                       _skyCondition,
                       style: TextStyle(color: Colors.grey[800], fontSize: 14),
                     ),
-                  // --- ▲▲▲ [수정] '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지) ▲▲▲ ---
                 ],
               ),
             ],
@@ -898,49 +862,46 @@ class CalendarScreenState extends State<CalendarScreen> {
             ),
           ],
         ),
-        // --- ▼▼▼ [수정됨] 코디 카드 UI로 변경 ▼▼▼ ---
         Container(
-          height: 170, // 기존 레이아웃 높이 유지
+          height: 170,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.grey[200], // 카드 배경색
+            color: Colors.grey[200],
             borderRadius: BorderRadius.circular(12),
           ),
-          clipBehavior: Clip.antiAlias, // 카드의 둥근 모서리 적용
+          clipBehavior: Clip.antiAlias,
+          // [수정] _isRecommendLoading 상태 사용
           child: _isRecommendLoading
               ? Center(
-                  // 로딩 중
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const CircularProgressIndicator(strokeWidth: 2),
-                      const SizedBox(height: 8),
-                      Text(
-                        _recommendStatus,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(strokeWidth: 2),
+                const SizedBox(height: 8),
+                Text(
+                  _recommendStatus,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
                   ),
-                )
-              : _recommendedOutfit != null
-              ? RecommendedOutfitCard(outfitData: _recommendedOutfit!) // 성공
-              : Center(
-                  // 데이터 없음 또는 오류
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text(
-                      _recommendStatus,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                  textAlign: TextAlign.center,
                 ),
+              ],
+            ),
+          )
+              : _recommendedOutfit != null
+              ? RecommendedOutfitCard(outfitData: _recommendedOutfit!)
+              : Center(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                _recommendStatus,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
         ),
-        // --- ▲▲▲ [수정됨] 코디 카드 UI로 변경 ▲▲▲ ---
       ],
     );
   }
@@ -1043,15 +1004,12 @@ class CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // --- ▼▼▼ [추가됨] 선택된 날의 TPO를 반환하는 헬퍼 함수 ▼▼▼ ---
   String _getTpoForSelectedDay() {
-    // _selectedDaySchedules는 _onDaySelected에서 이미 필터링됨
     if (_selectedDaySchedules.isEmpty) {
-      return 'Casual & Daily'; // 일정이 없으면 기본 TPO
+      return 'Casual & Daily';
     }
 
     final firstSchedule = _selectedDaySchedules.first;
-    // main.dart와 동일한 TPO 매핑
     const tpoMapping = {
       '일상 & 캐주얼': 'Casual & Daily',
       '비즈니스 & 포멀': 'Business & Formal',
@@ -1065,18 +1023,18 @@ class CalendarScreenState extends State<CalendarScreen> {
         ? tpo1
         : (tpo2 != null && tpo2.isNotEmpty)
         ? tpo2
-        : '일상 & 캐주얼'; // 일정에 TPO가 없으면 기본값
+        : '일상 & 캐주얼';
 
     return tpoMapping[rawTpo] ?? 'Casual & Daily';
   }
-  // --- ▲▲▲ [추가됨] 선택된 날의 TPO를 반환하는 헬퍼 함수 ▲▲▲ ---
 
-  // --- ▼▼▼ [추가됨] 코디 추천 API 호출 함수 ▼▼▼ ---
   Future<void> _getRecommendation() async {
-    if (mounted) {
+    // [수정] _isRecommendLoading=true는 _onDaySelected에서 이미 처리됨
+    // (단, _loadSecondaryData에서 호출 시에는 여기서 처리)
+    if (!_isRecommendLoading && mounted) {
       setState(() {
         _isRecommendLoading = true;
-        _recommendedOutfit = null; // 새 날짜 선택 시 이전 코디 제거
+        _recommendedOutfit = null;
         _recommendStatus = "코디 추천 로딩 중...";
       });
     }
@@ -1093,25 +1051,26 @@ class CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    // 1. TPO 가져오기 (이미 로드된 일정에서)
     final tpoCategory = _getTpoForSelectedDay();
-
-    // 2. 날짜와 온도 가져오기 (State 변수에서)
     final dateString = DateFormat('yyyy-MM-dd').format(_selectedDay!);
-    final temperature = _rawTempForApi; // 날씨 함수에서 저장한 값
+    final temperature = _rawTempForApi;
 
     try {
       const String serverIp = '3.36.66.130';
       final uri = Uri.parse('http://$serverIp:5000/recommend_today');
+
+      final requestBody = jsonEncode({
+        'email': userEmail,
+        'date': dateString,
+        'temperature': temperature,
+      });
+
+      debugPrint("Sending recommendation request: $requestBody");
+
       final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': userEmail,
-          'tpo': tpoCategory,
-          'date': dateString,
-          'temperature': temperature,
-        }),
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: requestBody
       );
 
       if (mounted) {
@@ -1120,20 +1079,21 @@ class CalendarScreenState extends State<CalendarScreen> {
           final outfitsList = List<Map<String, dynamic>>.from(
             data['recommended_outfits_list'] ?? [],
           );
+          final String effectiveTpo = data['tpo'] ?? tpoCategory;
 
           if (outfitsList.isNotEmpty) {
-            // "첫 번째" 코디만 저장
             setState(() {
               _recommendedOutfit = outfitsList.first;
-              _recommendStatus = "'$tpoCategory' 추천 코디";
+              _recommendStatus = "'$effectiveTpo' 추천 코디";
             });
           } else {
             setState(() {
-              _recommendStatus = "'$tpoCategory'에 맞는 코디가 없습니다.";
+              _recommendStatus = "'$effectiveTpo'에 맞는 코디가 없습니다.";
             });
           }
         } else {
           final data = jsonDecode(utf8.decode(response.bodyBytes));
+          debugPrint("Recommendation error: ${data['message']}");
           setState(() => _recommendStatus = data['message'] ?? '추천 실패');
         }
       }
@@ -1145,62 +1105,52 @@ class CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // --- ▲▲▲ [추가됨] 코디 추천 API 호출 함수 ▲▲▲ ---
 } // CalendarScreen 끝
 
 
-// --- ▼▼▼ [수정] StatelessWidget에서 StatefulWidget으로 변경 ▼▼▼ ---
-class ScheduleDetailDialog extends StatefulWidget {
+// --- (이하 ScheduleDetailDialog, RecommendedOutfitCard 코드는 수정 없음) ---
+// (이전 답변과 동일)
+
+class ScheduleDetailDialog extends StatelessWidget {
   final Map<String, dynamic> schedule;
   final VoidCallback onDeleteConfirmed;
-  final DateTime date; // API 호출에 필요한 날짜
-  final double? temperature; // API 호출에 필요한 온도
 
-  // --- ▼▼▼ [추가] 날씨 정보 파라미터 선언 ▼▼▼ ---
   final String currentTemp;
   final String skyCondition;
   final IconData skyIcon;
   final String? minTemp;
   final String? maxTemp;
-  // --- ▲▲▲ [추가] 날씨 정보 파라미터 선언 ▲▲▲ ---
+
+  final Map<String, dynamic>? recommendedOutfit;
+  final bool isRecommendLoading;
+  final String recommendStatus;
 
   const ScheduleDetailDialog({
     super.key,
     required this.schedule,
     required this.onDeleteConfirmed,
-    required this.date,
-    this.temperature,
-    // --- ▼▼▼ [추가] 생성자에 날씨 파라미터 추가 ▼▼▼ ---
     required this.currentTemp,
     required this.skyCondition,
     required this.skyIcon,
     this.minTemp,
     this.maxTemp,
-    // --- ▲▲▲ [추가] 생성자에 날씨 파라미터 추가 ▲▲▲ ---
+    this.recommendedOutfit,
+    required this.isRecommendLoading,
+    required this.recommendStatus,
   });
 
-  @override
-  State<ScheduleDetailDialog> createState() => _ScheduleDetailDialogState();
-}
-
-class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
-  // --- ▼▼▼ [추가] 코디 추천을 위한 상태 변수 ▼▼▼ ---
-  Map<String, dynamic>? _recommendedOutfit;
-  bool _isLoading = true;
-  String _recommendStatus = "코디 로딩 중...";
-  // --- ▲▲▲ [추가] 코디 추천을 위한 상태 변수 ▲▲▲ ---
-
-  Widget _buildWeatherCard() {
-    // 캘린더 화면의 _buildDateWeatherCard 로직을 재사용합니다.
-    // 팝업이 열린 날짜(widget.date)가 '오늘'인지 확인합니다.
+  Widget _buildWeatherCard(BuildContext context) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final selectedDate =
-    DateTime(widget.date.year, widget.date.month, widget.date.day);
-    final bool isToday = selectedDate.isAtSameMomentAs(today);
+    DateTime selectedDate;
+    try {
+      selectedDate = DateTime.parse(schedule['startDate'] as String? ?? '');
+    } catch (e) {
+      selectedDate = today;
+    }
 
-    // 캘린더 화면의 날씨가 로딩된 상태에서 팝업이 열리므로,
-    // 부모(widget)로부터 전달받은 데이터를 바로 사용합니다.
+    final normalizedSelectedDate = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+    final bool isToday = normalizedSelectedDate.isAtSameMomentAs(today);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1217,23 +1167,21 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(widget.skyIcon, size: 24, color: Colors.grey[800]),
+              Icon(skyIcon, size: 24, color: Colors.grey[800]),
               const SizedBox(width: 8),
-              Expanded( // 텍스트가 길어질 경우 대비
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // '오늘'일 때 현재 기온, 아니면 하늘 상태를 큰 글씨로
                     Text(
-                      isToday ? widget.currentTemp : widget.skyCondition,
+                      isToday ? currentTemp : skyCondition,
                       style:
                       const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    // '오늘'일 때만 하늘 상태를 작은 글씨로 표시 (중복 방지)
                     if (isToday)
                       Text(
-                        widget.skyCondition,
+                        skyCondition,
                         style: TextStyle(color: Colors.grey[800], fontSize: 12),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1242,17 +1190,17 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
               ),
             ],
           ),
-          if (widget.minTemp != null && widget.maxTemp != null)
+          if (minTemp != null && maxTemp != null)
             Padding(
               padding: const EdgeInsets.only(top: 6.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.start, // 왼쪽 정렬
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
-                  Text(widget.minTemp!,
+                  Text(minTemp!,
                       style: const TextStyle(fontSize: 10, color: Colors.blue)),
                   Text(' / ',
                       style: TextStyle(fontSize: 10, color: Colors.grey[700])),
-                  Text(widget.maxTemp!,
+                  Text(maxTemp!,
                       style: const TextStyle(fontSize: 10, color: Colors.red)),
                 ],
               ),
@@ -1261,103 +1209,6 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
       ),
     );
   }
-  // --- ▲▲▲ [추가] 팝업용 날씨 카드 빌드 함수 ▲▲▲ ---
-
-  @override
-  void initState() {
-    super.initState();
-    // 팝업이 열릴 때 코디 추천 API 호출
-    _fetchScheduleRecommendation();
-  }
-
-  // --- ▼▼▼ [추가] 특정 일정의 TPO를 반환하는 헬퍼 ▼▼▼ ---
-  String _getTpoForSchedule(Map<String, dynamic> schedule) {
-    // main.dart와 동일한 TPO 매핑
-    const tpoMapping = {
-      '일상 & 캐주얼': 'Casual & Daily',
-      '비즈니스 & 포멀': 'Business & Formal',
-      '특별한 날 & 데이트': 'Special Occasion & Date',
-      '활동적인 날': 'Active Day',
-    };
-
-    final String? tpo1 = schedule['tpo1'];
-    final String? tpo2 = schedule['tpo2'];
-    final String rawTpo = (tpo1 != null && tpo1.isNotEmpty)
-        ? tpo1
-        : (tpo2 != null && tpo2.isNotEmpty)
-        ? tpo2
-        : '일상 & 캐주얼'; // 일정에 TPO가 없으면 기본값
-
-    return tpoMapping[rawTpo] ?? 'Casual & Daily';
-  }
-  // --- ▲▲▲ [추가] 특정 일정의 TPO를 반환하는 헬퍼 ▲▲▲ ---
-
-  // --- ▼▼▼ [추가] 팝업용 코디 추천 API 호출 함수 ▼▼▼ ---
-  Future<void> _fetchScheduleRecommendation() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userEmail = prefs.getString('userEmail');
-    if (userEmail == null) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _recommendStatus = "로그인 필요";
-        });
-      }
-      return;
-    }
-
-    // 1. TPO 가져오기 (이 일정에서)
-    final tpoCategory = _getTpoForSchedule(widget.schedule);
-
-    // 2. 날짜와 온도 가져오기 (Widget에서)
-    final dateString = DateFormat('yyyy-MM-dd').format(widget.date);
-    final temperature = widget.temperature; // (From main screen state)
-
-    try {
-      const String serverIp = '3.36.66.130';
-      final uri = Uri.parse('http://$serverIp:5000/recommend_today');
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': userEmail,
-          'tpo': tpoCategory,
-          'date': dateString,
-          'temperature': temperature,
-        }),
-      );
-
-      if (mounted) {
-        if (response.statusCode == 200) {
-          final data = jsonDecode(utf8.decode(response.bodyBytes));
-          final outfitsList = List<Map<String, dynamic>>.from(
-            data['recommended_outfits_list'] ?? [],
-          );
-
-          if (outfitsList.isNotEmpty) {
-            // "첫 번째" 코디만 저장
-            setState(() {
-              _recommendedOutfit = outfitsList.first;
-              _recommendStatus = "'$tpoCategory' 추천 코디";
-            });
-          } else {
-            setState(() {
-              _recommendStatus = "'$tpoCategory'에 맞는 코디가 없습니다.";
-            });
-          }
-        } else {
-          final data = jsonDecode(utf8.decode(response.bodyBytes));
-          setState(() => _recommendStatus = data['message'] ?? '추천 실패');
-        }
-      }
-    } catch (e) {
-      debugPrint("Dialog Recommendation error: $e");
-      if (mounted) setState(() => _recommendStatus = '네트워크 오류');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-  // --- ▲▲▲ [추가] 팝업용 코디 추천 API 호출 함수 ▲▲▲ ---
 
   String _getAlarmText(String? unit, int? value) {
     if (unit == null || value == null || unit == 'none') {
@@ -1445,7 +1296,7 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
               child: const Text('확인', style: TextStyle(color: Colors.red)),
               onPressed: () {
                 Navigator.of(dialogContext).pop();
-                widget.onDeleteConfirmed(); // widget.으로 접근
+                onDeleteConfirmed();
               },
             ),
           ],
@@ -1456,35 +1307,33 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // --- ▼▼▼ [수정] 'widget.schedule'로 접근 ▼▼▼ ---
-    final String title = (widget.schedule['title'] as String?) ?? '제목 없음';
-    final String dateRange = _formatScheduleDateTime(widget.schedule);
+    final String title = (schedule['title'] as String?) ?? '제목 없음';
+    final String dateRange = _formatScheduleDateTime(schedule);
     final String? locationName =
-    (widget.schedule['location'] as String?)?.isNotEmpty == true
-        ? widget.schedule['location'] as String
+    (schedule['location'] as String?)?.isNotEmpty == true
+        ? schedule['location'] as String
         : null;
     final String? locationAddress =
-    (widget.schedule['locationAddress'] as String?)?.isNotEmpty == true
-        ? widget.schedule['locationAddress'] as String
+    (schedule['locationAddress'] as String?)?.isNotEmpty == true
+        ? schedule['locationAddress'] as String
         : null;
-    final String? tpo1 = (widget.schedule['tpo1'] as String?)?.isNotEmpty == true
-        ? widget.schedule['tpo1'] as String
+    final String? tpo1 = (schedule['tpo1'] as String?)?.isNotEmpty == true
+        ? schedule['tpo1'] as String
         : null;
-    final String? tpo2 = (widget.schedule['tpo2'] as String?)?.isNotEmpty == true
-        ? widget.schedule['tpo2'] as String
+    final String? tpo2 = (schedule['tpo2'] as String?)?.isNotEmpty == true
+        ? schedule['tpo2'] as String
         : null;
     final String explanation =
-        (widget.schedule['explanation'] as String?) ?? '설명 없음';
+        (schedule['explanation'] as String?) ?? '설명 없음';
     final List<String> participants =
-        (widget.schedule['participants'] as String?)
+        (schedule['participants'] as String?)
             ?.split(',')
             .where((s) => s.isNotEmpty)
             .toList() ??
             [];
     final String alarmText = _getAlarmText(
-        widget.schedule['alarmUnit'] as String?,
-        widget.schedule['alarmValue'] as int?);
-    // --- ▲▲▲ [수정] 'widget.schedule'로 접근 ▲▲▲ ---
+        schedule['alarmUnit'] as String?,
+        schedule['alarmValue'] as int?);
 
     return Dialog(
       alignment: Alignment.bottomCenter,
@@ -1556,12 +1405,6 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
                         ],
                       ),
                     ),
-                    // IconButton(
-                    //     onPressed: () {
-                    //       /* TODO: Edit schedule */
-                    //     },
-                    //     icon: const Icon(Icons.edit_outlined),
-                    //     constraints: const BoxConstraints()),
                   ],
                 ),
               ),
@@ -1609,17 +1452,12 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
                   Expanded(
                       child: Container(
                         height: 232,
-                        // --- ▼▼▼ [수정] Padding 제거, clipBehavior 추가 ---
-                        // padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                             color: Colors.grey[100],
                             borderRadius: BorderRadius.circular(12)),
                         clipBehavior: Clip.antiAlias,
-                        // --- ▲▲▲ [수정] Padding 제거, clipBehavior 추가 ---
-                        // --- ▼▼▼ [수정] "Look 정보 없음"을 로딩 로직으로 변경 ---
-                        child: _isLoading
+                        child: isRecommendLoading
                             ? Center(
-                          // 로딩 중
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -1628,7 +1466,7 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                                 child: Text(
-                                  _recommendStatus,
+                                  recommendStatus,
                                   style: const TextStyle(
                                       fontSize: 12, color: Colors.grey),
                                   textAlign: TextAlign.center,
@@ -1637,22 +1475,20 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
                             ],
                           ),
                         )
-                            : _recommendedOutfit != null
+                            : recommendedOutfit != null
                             ? RecommendedOutfitCard(
-                            outfitData: _recommendedOutfit!) // 성공
+                            outfitData: recommendedOutfit!)
                             : Center(
-                          // 데이터 없음 또는 오류
                           child: Padding(
                             padding: const EdgeInsets.all(8.0),
                             child: Text(
-                              _recommendStatus,
+                              recommendStatus,
                               style: const TextStyle(
                                   fontSize: 12, color: Colors.grey),
                               textAlign: TextAlign.center,
                             ),
                           ),
                         ),
-                        // --- ▲▲▲ [수정] "Look 정보 없음"을 로딩 로직으로 변경 ---
                       )),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1660,9 +1496,7 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
                       children: [
                         SizedBox(
                           height: 110,
-                          // --- ▼▼▼ [수정] _buildInfoCard를 _buildWeatherCard로 교체 ▼▼▼ ---
-                          child: _buildWeatherCard(),
-                          // --- ▲▲▲ [수정] _buildInfoCard를 _buildWeatherCard로 교체 ▲▲▲ ---
+                          child: _buildWeatherCard(context),
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
@@ -1758,14 +1592,11 @@ class _ScheduleDetailDialogState extends State<ScheduleDetailDialog> {
     );
   }
 }
-// --- ▲▲▲ [수정] StatelessWidget에서 StatefulWidget으로 변경 ▲▲▲ ---
 
-// --- ▼▼▼ [추가됨] main.dart에서 복사해 온 'RecommendedOutfitCard' 위젯 ▼▼▼ ---
 class RecommendedOutfitCard extends StatelessWidget {
   final Map<String, dynamic> outfitData;
   const RecommendedOutfitCard({super.key, required this.outfitData});
 
-  // (상수) 서버 URL
   static const String serverBaseUrl = 'http://3.36.66.130:5000';
 
   @override
@@ -1775,29 +1606,23 @@ class RecommendedOutfitCard extends StatelessWidget {
     final shoesData = outfitData['shoes'] as Map<String, dynamic>?;
 
     return Container(
-      // width: 160, // 부모(SizedBox)의 width를 따르므로 너비 지정 불필요
-      // margin: const EdgeInsets.only(right: 12.0), // 부모(SizedBox)가 있으므로 마진 불필요
       child: Card(
         elevation: 0,
-        color: Colors.grey[200], // 카드 배경색
-        // shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // 부모가 이미 적용
+        color: Colors.grey[200],
         clipBehavior: Clip.antiAlias,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch, // 자식들 꽉 채우기
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- 상의 (1/2 높이) ---
             Expanded(
-              flex: 2, // 비율 2
+              flex: 2,
               child: _buildImage(topData),
             ),
-            // --- 하의 (1/2 높이) ---
             Expanded(
-              flex: 2, // 비율 2
+              flex: 2,
               child: _buildImage(bottomData),
             ),
-            // --- 신발 (1/1 높이) ---
             Expanded(
-              flex: 1, // 비율 1 (더 작게)
+              flex: 1,
               child: _buildImage(shoesData),
             ),
           ],
@@ -1806,10 +1631,9 @@ class RecommendedOutfitCard extends StatelessWidget {
     );
   }
 
-  // 이미지 위젯 생성 헬퍼 (contain 적용, 흰색 배경)
   Widget _buildImage(Map<String, dynamic>? itemData) {
     final imagePath = itemData?['clothingImg'] as String?;
-    final bgColor = Colors.grey[200]; // 배경색을 카드의 grey[200]으로 통일
+    final bgColor = Colors.grey[200];
 
     if (itemData == null || imagePath == null || imagePath.isEmpty) {
       return Container(width: double.infinity, color: bgColor);
@@ -1823,7 +1647,7 @@ class RecommendedOutfitCard extends StatelessWidget {
       color: bgColor,
       child: Image.network(
         imageUrl,
-        fit: BoxFit.contain, // <<< contain 적용
+        fit: BoxFit.contain,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           return const Center(child: CircularProgressIndicator(strokeWidth: 2));
@@ -1838,5 +1662,3 @@ class RecommendedOutfitCard extends StatelessWidget {
     );
   }
 }
-
-// --- ▲▲▲ [추가됨] main.dart에서 복사해 온 'RecommendedOutfitCard' 위젯 ▲▲▲ ---

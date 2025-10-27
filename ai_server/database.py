@@ -124,7 +124,18 @@ def init_db():
             print("  - Updating 'schedule' table... adding 'tpo2' column.")
             cursor.execute("ALTER TABLE schedule ADD COLUMN tpo2 TEXT")
         # --- ▲▲▲ [추가] TPO 컬럼 추가 ▲▲▲ ---
-
+        # --- ▼▼▼ [핵심] 'outfits' 테이블의 UNIQUE 인덱스 삭제 ▼▼▼ ---
+        # (이전에 생성했던 'idx_unique_outfit' 인덱스를 삭제합니다.)
+        try:
+            print("  - Removing UNIQUE constraint index from 'outfits' table...")
+            cursor.execute('''
+                DROP INDEX IF EXISTS idx_unique_outfit
+            ''')
+            print("  - UNIQUE constraint index removed successfully.")
+        except sqlite3.Error as e:
+            print(f"!!! WARNING: FAILED TO DROP UNIQUE INDEX 'idx_unique_outfit' !!!")
+            print(f"!!! 원인: {e}")
+        # --- ▲▲▲ [핵심] 'outfits' 테이블의 UNIQUE 인덱스 삭제 ▲▲▲ ---
         conn.commit()
         print("* Database schema is up to date. No data was deleted.")
 

@@ -254,6 +254,55 @@ def delete_cloth(cloth_id):
             conn.close()
 # --- ▲▲▲ [추가됨] 옷 삭제 API 엔드포인트 ▲▲▲ ---
 
+# --- ▼▼▼ [신규 추가] 옷 메모 수정 (PATCH) API 엔드포인트 ▼▼▼ ---
+@app.route('/clothes/<int:cloth_id>', methods=['PATCH'])
+def update_cloth_memo(cloth_id):
+    data = request.get_json()
+    new_memo = data.get('memo')
+
+    if new_memo is None: # 'memo' 키가 없거나 값이 null일 경우
+        return jsonify({"message": "메모 내용이 없습니다."}), 400
+
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        # 1. 해당 cloth_id가 존재하는지 확인
+        cursor.execute("SELECT 1 FROM clothes WHERE cloth_id = ?", (cloth_id,))
+        cloth_exists = cursor.fetchone()
+
+        if not cloth_exists:
+            return jsonify({"message": "수정할 옷을 찾을 수 없습니다."}), 404
+
+        # 2. 메모 업데이트 실행
+        cursor.execute('''
+            UPDATE clothes 
+            SET memo = ? 
+            WHERE cloth_id = ?
+        ''', (new_memo, cloth_id))
+        conn.commit()
+
+        # 3. 변경 사항 확인
+        if conn.total_changes > 0:
+            return jsonify({"message": "메모가 성공적으로 업데이트되었습니다.", "memo": new_memo}), 200
+        else:
+            # cloth_id는 있었지만, 왠지 모르게 업데이트가 안 됨
+            return jsonify({"message": "메모 업데이트에 실패했습니다."}), 500
+
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
+        print(f"An error occurred in PATCH /clothes/<cloth_id>: {e}")
+        return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
+    except Exception as e:
+        print(f"An error occurred in PATCH /clothes/<cloth_id>: {e}")
+        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+# --- ▲▲▲ [신규 추가] 옷 메모 수정 (PATCH) API 엔드포인트 ▲▲▲ ---
+
 # --- ▼▼▼ [추가] 일정 삭제 API 엔드포인트 ▼▼▼ ---
 @app.route('/schedule/<int:schedule_id>', methods=['DELETE'])
 def delete_schedule(schedule_id):
@@ -770,6 +819,48 @@ def get_user_outfits(email):
         if conn:
             conn.close()
 # --- ▲▲▲ [추가] 저장된 코디 목록(outfits)을 TPO별로 조회하는 API ▲▲▲ ---
+
+# --- ▼▼▼ [추가] 선택된 코디 다중 삭제 API 엔드포인트 ▼▼▼ ---
+@app.route('/outfits/delete', methods=['POST'])
+def delete_outfits():
+    data = request.get_json()
+    outfit_ids = data.get('outfit_ids') # Flutter에서 보낸 ID 리스트
+
+    if not outfit_ids or not isinstance(outfit_ids, list):
+        return jsonify({"message": "삭제할 코디 ID 리스트(outfit_ids)가 필요합니다."}), 400
+
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        cursor = conn.cursor()
+
+        # 리스트에 있는 모든 ID를 순회하며 삭제
+        # (더 효율적인 방법: 'DELETE FROM outfits WHERE outfit_id IN (?, ?, ...)' 
+        #  하지만 이 방식이 구현하기 더 간단합니다.)
+        deleted_count = 0
+        for outfit_id in outfit_ids:
+            cursor.execute("DELETE FROM outfits WHERE outfit_id = ?", (outfit_id,))
+            if cursor.rowcount > 0:
+                deleted_count += 1
+        
+        conn.commit()
+
+        return jsonify({
+            "message": f"총 {len(outfit_ids)}개 요청 중 {deleted_count}개의 코디가 삭제되었습니다."
+        }), 200
+
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
+        print(f"An error occurred in POST /outfits/delete: {e}")
+        return jsonify({"message": f"데이터베이스 오류: {e}"}), 500
+    except Exception as e:
+        print(f"An error occurred in POST /outfits/delete: {e}")
+        return jsonify({"message": f"서버 내부 오류: {e}"}), 500
+    finally:
+        if conn:
+            conn.close()
+# --- ▲▲▲ [추가] 선택된 코디 다중 삭제 API 엔드포인트 ▲▲▲ ---
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
